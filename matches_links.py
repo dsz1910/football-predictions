@@ -149,4 +149,4 @@ if __name__ == '__main__':
     links_getter = GetLinks(driver, leagues_to_scrap)
     links_getter.get_all_links()
     
-print(sum([len(value) for value in links_getter.links.values()]))
+    print(sum([len(value) for value in links_getter.links.values()]))
