@@ -8,9 +8,18 @@ class GetLinks(PageInteractor):
 
     def __init__(self, driver, leagues_to_scrape):
         self.driver = driver
-        self.links = {league : None for league in leagues_to_scrape}
+        #self.links = {league : None for league in leagues_to_scrape}
+        self.links = []
         self.leagues_to_scrape = leagues_to_scrape
+        self._season_idx_generator = self._generate_season_idx()
     
+    @staticmethod
+    def _generate_season_idx():
+        idx = 0
+        while True:
+            idx += 1
+            yield idx
+
     def get_all_links(self):
         for league in self.leagues_to_scrape:
             self._get_league_matches_links(league)
@@ -18,6 +27,7 @@ class GetLinks(PageInteractor):
         
     def _get_league_matches_links(self, league):
         self.get_website(self.driver, league)
+        idx = next(self._season_idx_generator)
 
         if league == self.leagues_to_scrape[0]:
             # click cookies
@@ -29,9 +39,6 @@ class GetLinks(PageInteractor):
         while True:
             if self.is_element_present(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static'):
                 self.wait_until_element_is_not_visible(self.driver, By.CLASS_NAME, 'loadingOverlay')
-                
-                # Waiting until 'show more matches' button shows up in DOM
-                #self.wait_until_element_present_on_dom(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
 
                 # click show more matches
                 self.wait_and_click_button(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
@@ -40,9 +47,9 @@ class GetLinks(PageInteractor):
                 break
 
         # get matches links
-        matches = self.driver.find_elements(By.CSS_SELECTOR, 'a.eventRowLink')
-        links = [link.get_attribute('href') + '/statystyki-meczu/0' for link in matches]
-        self.links[league] = links
+        matches = self.find_elements(self.driver, By.CSS_SELECTOR, 'a.eventRowLink')
+        new_links = [(link.get_attribute('href') + '/statystyki-meczu/0', idx) for link in matches]
+        self.links += new_links
 
 
 if __name__ == '__main__':
@@ -109,5 +116,3 @@ if __name__ == '__main__':
 
     links_getter = GetLinks(driver, leagues_to_scrap)
     links_getter.get_all_links()
-    
-    print(sum([len(value) for value in links_getter.links.values()]))

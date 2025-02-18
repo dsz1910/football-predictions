@@ -39,3 +39,9 @@ class PageInteractor:
             return True
         except (NoSuchElementException, StaleElementReferenceException):
             return False
+        
+    def find_element(self, driver, by_what, text):
+        return driver.find_element(by_what, text)
+    
+    def find_elements(self, driver, by_what, text):
+        return driver.find_elements(by_what, text)
