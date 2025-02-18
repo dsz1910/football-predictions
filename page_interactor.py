@@ -1,0 +1,41 @@
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
+
+
+class PageInteractor:
+
+    def __init__(self, driver=None):
+        driver = driver
+
+    def get_website(self, driver, url):
+        driver.get(url)
+
+    def quit_website(self, driver):
+        driver.quit()
+
+    def wait_until_element_is_not_visible(self, driver, by_what, text, time=10):
+        WebDriverWait(driver, time).until(
+            EC.invisibility_of_element_located((by_what, text)))
+        
+    def wait_until_element_is_visible(self, driver, by_what, text, time=10):
+        WebDriverWait(driver, time).until(
+            EC.visibility_of_element_located((by_what, text)))
+
+    def wait_and_click_button(self, driver, by_what, text, time=10):
+        button = WebDriverWait(driver, time).until(
+            EC.element_to_be_clickable((by_what, text)))
+        button.click()
+        return button
+    
+    def wait_until_element_present_on_dom(self, driver, by_what, text, time=15):
+        value = WebDriverWait(driver, time).until(
+                EC.presence_of_element_located((by_what, text)))
+        return value
+
+    def is_element_present(self, driver, by_what, text):
+        try:
+            driver.find_element(by_what, text)
+            return True
+        except (NoSuchElementException, StaleElementReferenceException):
+            return False
