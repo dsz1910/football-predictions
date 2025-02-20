@@ -4,10 +4,7 @@ from selenium.common.exceptions import NoSuchElementException, StaleElementRefer
 
 
 class PageInteractor:
-
-    def __init__(self, driver=None):
-        driver = driver
-
+    
     def get_website(self, driver, url):
         driver.get(url)
 

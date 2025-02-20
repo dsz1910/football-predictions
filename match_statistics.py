@@ -1,48 +1,67 @@
 from page_interactor import PageInteractor
-from match_links import GetLinks
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from time import sleep, perf_counter
+from queue import Queue
 import pandas as pd
 import numpy as np
-import multiprocessing as mp
+import threading
+import pickle
 
 
 class ScrapeStatistics(PageInteractor):
     
-    def __init__(self, matches):
-        self.matches = matches
-        self.data = self._read_data_from_file()
+    lock = threading.Lock()
+    options = webdriver.FirefoxOptions()
+    options.add_argument('--headless')
+    options.add_argument('--disable-images')
+    options.add_argument('--disable-plugins')
+
+    def __init__(self, threads_num=3):
+        self.matches = self._read_links()
+        self.data = []
+        self.threads_num = threads_num
+        self.task_queue = Queue()
+        self.workers = None
 
     def get_all_stats(self):
-        driver = webdriver.Firefox()
-        #i = 0
-        for url, season_idx in self.matches:
-            #if i == 10:
-             #   break
-            stats = self._get_match_stats(driver, url, season_idx)
-            self.data = pd.concat([self.data, pd.DataFrame([stats])], ignore_index=True)
-            #i += 1
+        for task in self.matches:
+            self.task_queue.put(task)
+
+        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats) for _ in range(self.threads_num)]
+
+        for worker in self.workers:
+            worker.start()
+            
+        for worker in self.workers:
+            worker.join()
+
+        for worker in self.workers:
+            self.quit_website(worker.driver)
+
+        self.data = pd.DataFrame(self.data)
 
         self._save_stats()
+        self._save_stats('excel')
 
     def _read_data_from_file(self):
         if 1:
-            columns = ['home_goals', 'home_poss', 'home_xG', 'home_passes', 'home_acc_passes', 
+            columns = ['home_name', 'home_goals', 'home_poss', 'home_xG', 'home_passes', 'home_acc_passes', 
                        'home_shots', 'home_acc_shots', 'home_excluded_count', 'home_corners', 
                        'home_goalkeeper_saves', 'home_free_kicks', 'home_offsides', 
-                       'home_fouls', 'home_mean_raitng', 'home_formation', 'home_inacc_shots',
+                       'home_fouls', 'home_mean_raiting', 'home_formation', 'home_inacc_shots',
 
-                       'away_goals', 'away_poss', 'away_xG', 'away_passes', 'away_acc_passes',
+                       'away_name', 'away_goals', 'away_poss', 'away_xG', 'away_passes', 'away_acc_passes',
                        'away_shots', 'away_acc_shots', 'away_excluded_count', 'away_corners',
                        'away_goalkeeper_saves', 'away_free_kicks', 'away_offsides', 
-                       'away_fouls', 'away_mean_raitng', 'away_formation', 'away_inacc_shots',
+                       'away_fouls', 'away_mean_raiting', 'away_formation', 'away_inacc_shots',
 
                        'result', 'match_date', 'round', 'league', 'season'
                        ]
             return pd.DataFrame(columns=columns)
         
     def _get_match_stats(self, driver, url, season_idx):
+
         self.get_website(driver, url)
         final_data = {}
         
@@ -73,6 +92,7 @@ class ScrapeStatistics(PageInteractor):
                 final_data[f'home_{value}'], final_data[f'away_{value}'] = self._split_home_and_away(
                     match_stats, key, float if key == 'Oczekiwane bramki (xG)' else int)
 
+        final_data['home_name'], final_data['away_name'] = self._get_team_names(driver)
         final_data['season'] = season_idx
         final_data['match_date'] = self._get_time(driver)
         final_data['league'], final_data['round'] = self._get_league_and_round(driver)
@@ -89,6 +109,13 @@ class ScrapeStatistics(PageInteractor):
         
         return final_data
     
+    def _get_team_names(self, driver):
+        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 
+            'participant__participantName')
+        
+        names = self.find_elements(driver, By.CLASS_NAME, 'participant__participantName')
+        return names[0].text, names[-1].text
+    
     def _get_excluded_players_count(self, driver):
         if not self.is_element_present(
             driver, By.CSS_SELECTOR, '.wcl-caption_xZPDJ.wcl-scores-caption-05_f2TCB.wcl-description_iZZUi'):
@@ -101,25 +128,27 @@ class ScrapeStatistics(PageInteractor):
         awaay_excluded_count = len(excluded) - home_excluded_count
         return home_excluded_count, awaay_excluded_count
 
-
     def _get_mean_raiting(self, driver):
         self.wait_until_element_is_visible(driver, By.CSS_SELECTOR, '[data-testid="wcl-scores-caption-05"]')
         raitings = self.find_elements(driver, By.CSS_SELECTOR, '[data-testid="wcl-scores-caption-05"]')
         return float(raitings[0].text), float(raitings[1].text) 
 
     def _get_formation(self, driver):
-        sleep(1)
         self.wait_until_element_is_visible(driver, By.XPATH,
         """//*[contains(@class, 'wcl-headerSection') 
         and contains(@class, 'wcl-text') and contains(@class, 'wcl-spaceBetween')]""")
 
-        formations = self.find_element(
+        while True:
+            formations = self.find_element(
             driver, By.XPATH, """//*[contains(@class, 'wcl-headerSection') 
-        and contains(@class, 'wcl-text') and contains(@class, 'wcl-spaceBetween')]""").text
+                and contains(@class, 'wcl-text') and contains(@class, 'wcl-spaceBetween')]""").text
         
-        formations = formations.split(('\n'))
-        return formations[0], formations[2]
+            formations = formations.split(('\n'))
 
+            try:
+                return formations[0], formations[2]
+            except IndexError:
+                sleep(1)
 
     @staticmethod
     def _get_result(home, away):
@@ -172,22 +201,39 @@ class ScrapeStatistics(PageInteractor):
     def _get_possesion(poss):
         return int(poss[0][:-1]), int(poss[1][:-1])
 
-    def _save_stats(self):
-        self.data.to_csv('stats.csv', index=False, encoding='utf-8')
-        #self.data.to_excel('stats.xlsx', index=False, engine='openpyxl')
+    def _save_stats(self, format='csv'):
+        file_formats = {'csv' : lambda: self.data.to_csv('stats.csv', index=False, encoding='utf-8'),
+                        'excel' : lambda: self.data.to_excel('stats.xlsx', index=False, engine='openpyxl')}
+        file_formats.get(format)()
 
+    def _read_links(self):
+        with open('match_links_with_season_indexes.pkl', 'rb') as file:
+            return pickle.load(file)
+
+class Worker(threading.Thread):
+
+    def __init__(self, task_queue, results, task):
+        super().__init__()
+        self.driver = None
+        self.task_queue = task_queue
+        self.results = results
+        self.task = task
+
+    def run(self):
+        self.driver = webdriver.Firefox(options=ScrapeStatistics.options)
+
+        while not self.task_queue.empty():
+            match, season_idx = self.task_queue.get()
+
+            result = self.task(self.driver, match, season_idx)
+            with ScrapeStatistics.lock:
+                self.results.append(result)
 
 if __name__ == '__main__':
-    driver = webdriver.Firefox()
-    links_scraper = GetLinks(driver, ['https://www.flashscore.pl/pilka-nozna/polska/pko-bp-ekstraklasa-2023-2024/wyniki/',
-                        ])
-    
-    links_scraper.get_all_links()
-
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(links_scraper.links)
+    stats_scraper = ScrapeStatistics(3)
     stats_scraper.get_all_stats()
     end = perf_counter()
     print("pobieranie statystyk trwało: ", end - start)
-
+    stats_scraper._save_stats('excel')
     print(stats_scraper.data)
