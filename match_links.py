@@ -65,7 +65,7 @@ class GetLinks(PageInteractor):
 
 if __name__ == '__main__':
     start = perf_counter()
-    driver = webdriver.Firefox()
+    driver = webdriver.Chrome()
     links_getter = GetLinks(driver)
     links_getter.get_all_links()
     end = perf_counter()

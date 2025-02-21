@@ -1,6 +1,7 @@
 from page_interactor import PageInteractor
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import WebDriverException
 from time import sleep, perf_counter
 from queue import Queue
 import pandas as pd
@@ -12,10 +13,6 @@ import pickle
 class ScrapeStatistics(PageInteractor):
     
     lock = threading.Lock()
-    options = webdriver.FirefoxOptions()
-    options.add_argument('--headless')
-    options.add_argument('--disable-images')
-    options.add_argument('--disable-plugins')
 
     def __init__(self, threads_num=3):
         self.matches = self._read_links()
@@ -24,11 +21,26 @@ class ScrapeStatistics(PageInteractor):
         self.task_queue = Queue()
         self.workers = None
 
+    @staticmethod
+    def errors_handler(func):
+        def wrapper(*args, **kwargs):
+            for _ in range(3):
+                try:
+                    result = func(*args, **kwargs)
+                    return result
+                except Exception as e:
+                    print(e)
+                    sleep(0.5)
+            return None
+        return wrapper
+
     def get_all_stats(self):
-        for task in self.matches:
+        for i, task in enumerate(self.matches):
+            if i % 300 == 0:
+                self.task_queue.put((0, 0))
             self.task_queue.put(task)
 
-        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats) for _ in range(self.threads_num)]
+        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats, self.save_stats) for _ in range(self.threads_num)]
 
         for worker in self.workers:
             worker.start()
@@ -41,8 +53,8 @@ class ScrapeStatistics(PageInteractor):
 
         self.data = pd.DataFrame(self.data)
 
-        self._save_stats()
-        self._save_stats('excel')
+        self.save_stats()
+        self.save_stats('excel')
 
     def _read_data_from_file(self):
         if 1:
@@ -61,10 +73,9 @@ class ScrapeStatistics(PageInteractor):
             return pd.DataFrame(columns=columns)
         
     def _get_match_stats(self, driver, url, season_idx):
-
         self.get_website(driver, url)
         final_data = {}
-        
+                
         sleep(1)
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
             self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
@@ -75,22 +86,22 @@ class ScrapeStatistics(PageInteractor):
         match_stats = {stats[1] : (stats[0], stats[2]) for stats in all_stats}
 
         stats_category = {'Posiadanie piłki': 'poss', 'Oczekiwane bramki (xG)': 'xG', 'Sytuacje bramkowe': 'shots',
-                          'Strzały na bramkę': 'acc_shots', 'Strzały niecelne': 'inacc_shots', 'Podania': 'passes',
-                          'Rzuty rożne': 'corners', 'Interwencje bramkarzy': 'goalkeeper_saves',
-                          'Rzuty wolne': 'free_kicks', 'Spalone': 'offsides', 'Faule' : 'fouls'}
-        
+                        'Strzały na bramkę': 'acc_shots', 'Strzały niecelne': 'inacc_shots', 'Podania': 'passes',
+                        'Rzuty rożne': 'corners', 'Interwencje bramkarzy': 'goalkeeper_saves',
+                        'Rzuty wolne': 'free_kicks', 'Spalone': 'offsides', 'Faule' : 'fouls'}
+                
         for key, value in stats_category.items():
             if key == 'Podania':
                 final_data[f'home_{value}'], final_data[f'home_acc_{value}'], \
                     final_data[f'away_{value}'], final_data[f'away_acc_{value}'] = \
                         self._get_passes(match_stats)
-                
+                        
             elif key == 'Posiadanie piłki':
                 final_data[f'home_{value}'], final_data[f'away_{value}'] = self._get_possesion(match_stats[key])
 
             else:
                 final_data[f'home_{value}'], final_data[f'away_{value}'] = self._split_home_and_away(
-                    match_stats, key, float if key == 'Oczekiwane bramki (xG)' else int)
+                match_stats, key, float if key == 'Oczekiwane bramki (xG)' else int)
 
         final_data['home_name'], final_data['away_name'] = self._get_team_names(driver)
         final_data['season'] = season_idx
@@ -106,9 +117,10 @@ class ScrapeStatistics(PageInteractor):
         final_data['home_mean_raiting'], final_data['away_mean_raiting'] = self._get_mean_raiting(driver)
         final_data['home_excluded_count'], final_data['away_excluded_count'] = self._get_excluded_players_count(
             driver)
-        
+                
         return final_data
-    
+
+    @errors_handler
     def _get_team_names(self, driver):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 
             'participant__participantName')
@@ -116,6 +128,7 @@ class ScrapeStatistics(PageInteractor):
         names = self.find_elements(driver, By.CLASS_NAME, 'participant__participantName')
         return names[0].text, names[-1].text
     
+    @errors_handler
     def _get_excluded_players_count(self, driver):
         if not self.is_element_present(
             driver, By.CSS_SELECTOR, '.wcl-caption_xZPDJ.wcl-scores-caption-05_f2TCB.wcl-description_iZZUi'):
@@ -128,11 +141,13 @@ class ScrapeStatistics(PageInteractor):
         awaay_excluded_count = len(excluded) - home_excluded_count
         return home_excluded_count, awaay_excluded_count
 
+    @errors_handler
     def _get_mean_raiting(self, driver):
         self.wait_until_element_is_visible(driver, By.CSS_SELECTOR, '[data-testid="wcl-scores-caption-05"]')
         raitings = self.find_elements(driver, By.CSS_SELECTOR, '[data-testid="wcl-scores-caption-05"]')
         return float(raitings[0].text), float(raitings[1].text) 
 
+    @errors_handler
     def _get_formation(self, driver):
         self.wait_until_element_is_visible(driver, By.XPATH,
         """//*[contains(@class, 'wcl-headerSection') 
@@ -147,13 +162,15 @@ class ScrapeStatistics(PageInteractor):
 
             try:
                 return formations[0], formations[2]
-            except IndexError:
-                sleep(1)
+            except:
+                sleep(0.5)
 
     @staticmethod
+    @errors_handler
     def _get_result(home, away):
         return (home < away) + (home != away)
     
+    @errors_handler
     def _get_goals(self, driver):
         result = self.find_element(driver, By.CLASS_NAME, 'detailScore__wrapper').text
         dash = result.find('-')
@@ -161,6 +178,7 @@ class ScrapeStatistics(PageInteractor):
         away_goals = int(result[dash + 2 : ])
         return home_goals, away_goals
 
+    @errors_handler
     def _get_league_and_round(self, driver):
         league_and_round = self.find_element(driver, By.CLASS_NAME, 'tournamentHeader__country').text
 
@@ -173,18 +191,21 @@ class ScrapeStatistics(PageInteractor):
 
         return league_name, league_round
 
+    @errors_handler
     def _get_time(self, driver):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'duelParticipant__startTime')
         start_time = self.find_element(driver, By.CLASS_NAME, 'duelParticipant__startTime').text
         return start_time
 
     @staticmethod
+    @errors_handler
     def _split_home_and_away(data, key, to_type=int):
         if key in data:
             return to_type(data[key][0]), to_type(data[key][1])
         return np.nan, np.nan
     
     @staticmethod
+    @errors_handler
     def _get_passes(stats):
         if 'Podania' not in stats:
             return np.nan, np.nan, np.nan, np.nan
@@ -198,12 +219,17 @@ class ScrapeStatistics(PageInteractor):
         return passes
     
     @staticmethod
+    @errors_handler
     def _get_possesion(poss):
         return int(poss[0][:-1]), int(poss[1][:-1])
 
-    def _save_stats(self, format='csv'):
-        file_formats = {'csv' : lambda: self.data.to_csv('stats.csv', index=False, encoding='utf-8'),
-                        'excel' : lambda: self.data.to_excel('stats.xlsx', index=False, engine='openpyxl')}
+    def save_stats(self, format='csv', data=None):
+        if data is None:
+            data = self.data
+        data = pd.DataFrame(data)
+
+        file_formats = {'csv' : lambda: data.to_csv('stats.csv', index=False, encoding='utf-8'),
+                        'excel' : lambda: data.to_excel('stats.xlsx', index=False, engine='openpyxl')}
         file_formats.get(format)()
 
     def _read_links(self):
@@ -212,28 +238,33 @@ class ScrapeStatistics(PageInteractor):
 
 class Worker(threading.Thread):
 
-    def __init__(self, task_queue, results, task):
+    def __init__(self, task_queue, results, task, saver):
         super().__init__()
         self.driver = None
         self.task_queue = task_queue
         self.results = results
         self.task = task
+        self.saver = saver
 
     def run(self):
-        self.driver = webdriver.Firefox(options=ScrapeStatistics.options)
+        self.driver = webdriver.Chrome()
 
         while not self.task_queue.empty():
             match, season_idx = self.task_queue.get()
-
-            result = self.task(self.driver, match, season_idx)
-            with ScrapeStatistics.lock:
-                self.results.append(result)
-
+            if isinstance(match, str):
+                result = self.task(self.driver, match, season_idx)
+                with ScrapeStatistics.lock:
+                    self.results.append(result)
+            else:
+                self.saver(data=self.results)
+                self.saver(format='excel')
+                print('saved data')
+                
 if __name__ == '__main__':
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(3)
+    stats_scraper = ScrapeStatistics(7)
     stats_scraper.get_all_stats()
     end = perf_counter()
     print("pobieranie statystyk trwało: ", end - start)
-    stats_scraper._save_stats('excel')
+    stats_scraper.save_stats('excel')
     print(stats_scraper.data)
