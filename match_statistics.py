@@ -186,14 +186,12 @@ class ScrapeStatistics(PageInteractor):
         return start_time
 
     @staticmethod
-    #@errors_handler
     def _split_home_and_away(data, key, to_type=int):
         if key in data:
             return to_type(data[key][0]), to_type(data[key][1])
         return np.nan, np.nan
     
     @staticmethod
-    #@errors_handler
     def _get_passes(stats):
         if 'Podania' not in stats:
             return np.nan, np.nan, np.nan, np.nan
@@ -207,7 +205,6 @@ class ScrapeStatistics(PageInteractor):
         return passes
     
     @staticmethod
-    #@errors_handler
     def _get_possesion(poss):
         return int(poss[0][:-1]), int(poss[1][:-1])
 
