@@ -39,7 +39,6 @@ class ScrapeStatistics(PageInteractor):
             self.quit_website(worker.driver)
 
         self.data = pd.DataFrame(self.data)
-
         self.save_stats()
         self.save_stats('excel')
 
@@ -255,5 +254,4 @@ if __name__ == '__main__':
     stats_scraper.get_all_stats()
     end = perf_counter()
     print('pobieranie statystyk trwało: ', end - start)
-    stats_scraper.save_stats('excel')
     print(stats_scraper.data)
