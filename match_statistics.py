@@ -43,10 +43,13 @@ class ScrapeStatistics(PageInteractor):
         self.save_stats('excel')
 
     def _scrape_main_stats(self, driver):
-        try:
-            self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wcl-row_OFViZ')
-        except TimeoutException:
-            return None
+        for i in range(5):
+            try:
+                self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wcl-row_OFViZ')
+                break
+            except TimeoutException:
+                if i == 4:
+                    return None
 
         all_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-row_OFViZ')
         all_stats = [stats.text.split('\n') for stats in all_stats]
