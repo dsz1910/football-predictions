@@ -28,7 +28,6 @@ class DataPreprocessor:
         
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=100, max_depth=10),
             max_iter=30, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
-        imputed_data = imputer.fit_transform(data_to_impute)
         
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
@@ -126,9 +125,9 @@ class DataPreprocessor:
         data['home_defenders_num'] = self._get_most_frequent(game.home_name, home_matches, 'defenders_num')
         data['away_defenders_num'] = self._get_most_frequent(game.away_name, away_matches, 'defenders_num')
 
-        data['home_coach_matches'] = self._coach_matches(home_matches, game.home_name)
-        data['away_coach_matches'] = self._coach_matches(away_matches, game.away_name)
-
+        data['home_coach_matches'] = self._coach_matches(home_matches, game.home_name, game.home_coach)
+        data['away_coach_matches'] = self._coach_matches(away_matches, game.away_name, game.away_coach)
+        print(data['home_coach_matches'], data['away_coach_matches'])
         return data
     
     @staticmethod
@@ -152,9 +151,7 @@ class DataPreprocessor:
         return points / matches_count
 
     @staticmethod
-    def _coach_matches(games, team):
-        last_game = games.iloc[-1]
-        coach = last_game['home_coach'] if last_game['home_name'] == team else last_game['away_coach']
+    def _coach_matches(games, team, coach):
         ret =  games[((games['home_coach'] == coach) & (games['home_name'] == team)) |
                      ((games['away_coach'] == coach) & (games['away_name'] == team))].shape[0]
         return ret
