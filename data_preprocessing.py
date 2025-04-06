@@ -32,7 +32,14 @@ class DataPreprocessor:
         cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
         data_to_impute = self.data[cols_to_impute].copy()
         
+<<<<<<< HEAD
         imputed_data = self.imputer.fit_transform(data_to_impute)
+=======
+        imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=100, max_depth=10),
+            max_iter=30, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
+        imputed_data = imputer.fit_transform(data_to_impute)
+        
+>>>>>>> 3a91774dc6cfd36ec777676ac15bbfdd8eacf5f2
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
 
@@ -131,10 +138,14 @@ class DataPreprocessor:
 
         data['home_coach_matches'] = self._coach_matches(home_matches, game.home_name, game.home_coach)
         data['away_coach_matches'] = self._coach_matches(away_matches, game.away_name, game.away_coach)
+<<<<<<< HEAD
 
         data['result'] = game.result
         data['home_']
 
+=======
+        
+>>>>>>> 3a91774dc6cfd36ec777676ac15bbfdd8eacf5f2
         return data
     
     @staticmethod
