@@ -13,22 +13,26 @@ class DataPreprocessor:
         vt = VirtualTable()
         vt.simulate_all_seasons()
         self.data = vt.stats
+        self.imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=100, max_depth=10),
+            max_iter=30, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
     
     def preprocess_data(self):
         self._clean_data()
         self._fill_lack_of_data()
         self._change_formation_to_num_data()
         self._extract_all_features()
+        self._fill_lack_of_data(True)
 
-    def _fill_lack_of_data(self):
-        cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
+    def _fill_lack_of_data(self, all_cols=False):
+        cols_not_to_impute = []
+        if not all_cols:
+            cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
                             'home_formation', 'home_name', 'league', 'match_date', 'round']
+
         cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
         data_to_impute = self.data[cols_to_impute].copy()
         
-        imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=100, max_depth=10),
-            max_iter=30, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
-        
+        imputed_data = self.imputer.fit_transform(data_to_impute)
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
 
@@ -127,7 +131,10 @@ class DataPreprocessor:
 
         data['home_coach_matches'] = self._coach_matches(home_matches, game.home_name, game.home_coach)
         data['away_coach_matches'] = self._coach_matches(away_matches, game.away_name, game.away_coach)
-        print(data['home_coach_matches'], data['away_coach_matches'])
+
+        data['result'] = game.result
+        data['home_']
+
         return data
     
     @staticmethod
