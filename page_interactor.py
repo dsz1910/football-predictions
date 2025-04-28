@@ -1,10 +1,10 @@
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
-
+from time import sleep
 
 class PageInteractor:
-    
+
     def get_website(self, driver, url):
         while True:
             try:
@@ -19,7 +19,7 @@ class PageInteractor:
     def wait_until_element_is_not_visible(self, driver, by_what, text, time=30):
         WebDriverWait(driver, time).until(
             EC.invisibility_of_element_located((by_what, text)))
-        
+    
     def wait_until_element_is_visible(self, driver, by_what, text, time=30):
                 WebDriverWait(driver, time).until(
                     EC.visibility_of_element_located((by_what, text)))
@@ -43,7 +43,12 @@ class PageInteractor:
             return False
         
     def find_element(self, driver, by_what, text):
-        return driver.find_element(by_what, text)
-    
+        for _ in range(3):
+            try:
+                ret = driver.find_element(by_what, text)
+                return ret
+            except:
+                pass
+
     def find_elements(self, driver, by_what, text):
         return driver.find_elements(by_what, text)

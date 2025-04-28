@@ -5,6 +5,7 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 from math import sqrt
+from time import perf_counter
 
 
 class DataPreprocessor:
@@ -13,28 +14,40 @@ class DataPreprocessor:
         vt = VirtualTable()
         vt.simulate_all_seasons()
         self.data = vt.stats
-        self.imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=100, max_depth=10),
-            max_iter=30, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
     
     def preprocess_data(self):
         self._clean_data()
         self._fill_lack_of_data()
         self._change_formation_to_num_data()
         self._extract_all_features()
-        self._fill_lack_of_data(True)
+        self._fill_lack_of_data(True, 5, 20, 5)
+        self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False):
-        cols_not_to_impute = []
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=20, max_depth=20, max_iter=15):
+        s = perf_counter()
+        imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
+            max_depth=max_depth), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
+        
+        if all_cols: print('started')
+        cols_not_to_impute = ['home_name', 'away_name', 'result']
         if not all_cols:
             cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
                             'home_formation', 'home_name', 'league', 'match_date', 'round']
 
         cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
         data_to_impute = self.data[cols_to_impute].copy()
-        
-        imputed_data = self.imputer.fit_transform(data_to_impute)
+
+        if all_cols: print('started imputing')
+        imputed_data = imputer.fit_transform(data_to_impute)
+        if all_cols: print('ended imputing')
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
+        if all_cols: print('method ended')
+        e = perf_counter()
+        print(e-s)
+        if all_cols:
+            print(self.data.info())
+            print(self.data.size)
 
     def _clean_data(self):
         self.data = self.data[~self.data['home_name'].str.contains(
@@ -59,20 +72,23 @@ class DataPreprocessor:
         self.data['position_diff'] = self.data['home_position'] - self.data['away_position']
 
         for game in self.data.itertuples(index=True):
-            final_stats.append(self._extract_match_features(game))
+            result = self._extract_match_features(game)
+            if result:
+                final_stats.append(result)
+            if game.Index % 1000 == 0:
+                print(game.Index)
 
         self.final_data = final_stats
         self.data = pd.DataFrame(final_stats)
-        self._save_data()
 
     def _extract_match_features(self, game):
-        data = {}
         home_matches = self._previous_matches(game, game.home_name)
         away_matches = self._previous_matches(game, game.away_name)
 
         if home_matches.shape[0] < 5 or away_matches.shape[0] < 5:
-            return data
+            return None
         
+        data = {}
         stop = 10 if home_matches.shape[0] > 6 < away_matches.shape[0] else 7
         stats_tuple = (
     'xG',
@@ -121,6 +137,8 @@ class DataPreprocessor:
             data[f'away_points_per_match_{i-2}-{i}'] = self._points_per_match_in_3_games(
                 away_matches.iloc[i-3:i], game.away_name)
 
+        data['home_position'] = game.home_position
+        data['away_position'] = game.away_position
         data['position_diff'] = game.position_diff
 
         data['home_formation'] = self._get_most_frequent(game.home_name, home_matches, 'formation')
