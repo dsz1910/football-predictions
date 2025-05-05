@@ -1,17 +1,18 @@
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
-from time import sleep
+
 
 class PageInteractor:
 
     def get_website(self, driver, url):
-        while True:
+        for i in range(5):
             try:
                 driver.get(url)
-                break
+                return True
             except:
                 pass
+        return False
 
     def quit_website(self, driver):
         driver.quit()

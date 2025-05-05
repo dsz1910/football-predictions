@@ -86,7 +86,7 @@ class ScrapeStatistics(PageInteractor):
         final_data = {}
         stats_categories = {'Posiadanie piłki': 'poss', 'Oczekiwane gole (xG)': 'xG', 'Strzały łącznie': 'shots',
                         'Strzały na bramkę': 'acc_shots', 'Strzały niecelne': 'inacc_shots', 'Podania': 'passes',
-                        'Rzuty rożne': 'corners', 'Interwencje bramkarza': 'goalkeeper_saves',
+                        'Rzuty rożne': 'corners', 'Obrony bramkarza': 'goalkeeper_saves',
                         'Rzuty wolne': 'free_kicks', 'Spalone': 'offsides', 'Faule' : 'fouls'}
                 
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
@@ -122,9 +122,8 @@ class ScrapeStatistics(PageInteractor):
         final_data['league'], final_data['round'] = self._get_league_and_round(driver)
 
         url = url.replace('statystyki-meczu/0', 'sklady')
-        self.get_website(driver, url)
 
-        if match_stats:
+        if self.get_website(driver, url):
             funcs = [self._get_formation, self._get_mean_raiting, self._get_excluded_players_count, self._get_coach]
             values = sum((func(driver) for func in funcs), ())
         else:
@@ -299,3 +298,11 @@ if __name__ == '__main__':
     end = perf_counter()
     print('pobieranie statystyk trwało: ', end - start)
     print(stats_scraper.data)
+
+    '''   s = ScrapeStatistics(1)
+    page = s.matches[0][0]
+    print(page)
+    driver = webdriver.Chrome()
+    driver.get(page)
+    r = s._scrape_main_stats(driver)
+    print(r)'''

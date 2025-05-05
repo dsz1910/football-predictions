@@ -20,15 +20,17 @@ class DataPreprocessor:
         self._fill_lack_of_data()
         self._change_formation_to_num_data()
         self._extract_all_features()
-        self._fill_lack_of_data(True, 5, 20, 5)
+        s = perf_counter()
+        self._fill_lack_of_data(all_cols=True)
+        e = perf_counter()
+        print(e-s)
         self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False, n_estimators=20, max_depth=20, max_iter=15):
-        s = perf_counter()
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=50, max_depth=10, max_iter=10, n_nearest_features=50):
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
-            max_depth=max_depth), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending', skip_complete=False)
+            max_depth=max_depth), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending',
+            skip_complete=True, n_nearest_features=n_nearest_features, random_state=0)
         
-        if all_cols: print('started')
         cols_not_to_impute = ['home_name', 'away_name', 'result']
         if not all_cols:
             cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
@@ -37,17 +39,9 @@ class DataPreprocessor:
         cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
         data_to_impute = self.data[cols_to_impute].copy()
 
-        if all_cols: print('started imputing')
         imputed_data = imputer.fit_transform(data_to_impute)
-        if all_cols: print('ended imputing')
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
-        if all_cols: print('method ended')
-        e = perf_counter()
-        print(e-s)
-        if all_cols:
-            print(self.data.info())
-            print(self.data.size)
 
     def _clean_data(self):
         self.data = self.data[~self.data['home_name'].str.contains(
@@ -108,25 +102,20 @@ class DataPreprocessor:
         
         for i in range(3, stop, 3):
             for stats in stats_tuple:
-                data[f'home_{stats}_mean_{i-2}-{i}'], data[f'away_{stats}_mean_{i-2}-{i}'], \
-                    data[f'{stats}_mean_diff_{i-2}-{i}'] = self._stats_avg(
+                data[f'home_{stats}_{i-2}-{i}'], data[f'away_{stats}_{i-2}-{i}'], \
+                    data[f'{stats}_diff_{i-2}-{i}'] = self._mean_with_dispersion_penalty(
                         game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], stats)
                 
-                data[f'home_opp_{stats}_mean_{i-2}-{i}'], data[f'away_opp_{stats}_mean_{i-2}-{i}'], \
-                    data[f'opp_{stats}_mean_diff_{i-2}-{i}'] = self._stats_avg(
+                data[f'home_opp_{stats}_{i-2}-{i}'], data[f'away_opp_{stats}_{i-2}-{i}'], \
+                    data[f'opp_{stats}_diff_{i-2}-{i}'] = self._mean_with_dispersion_penalty(
                         game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], stats, stats_against=True)
             
             data[f'home_poss_{i-2}-{i}'], data[f'away_poss_{i-2}-{i}'], data[f'poss_diff_{i-2}-{i}'] = \
-                self._stats_avg(game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], 'poss')
+                self._mean_with_dispersion_penalty(game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], 'poss')
             
-            data[f'home_opp_positions_{i-2}-{i}'] = self._opponents_positions_feture(
-                game.home_name, home_matches.iloc[i-3:i])
-            
-            data[f'away_opp_positions_{i-2}-{i}'] = self._opponents_positions_feture(
-                game.away_name, away_matches.iloc[i-3:i])
-            
-            data[f'opp_positions_diff_{i-2}-{i}'] = data[f'home_opp_positions_{i-2}-{i}'] - data[
-                f'away_opp_positions_{i-2}-{i}'] 
+            data[f'home_opp_positions_{i-2}-{i}'], data[f'away_opp_positions_{i-2}-{i}'], 
+            data[f'opp_positions_diff_{i-2}-{i}']  = self._mean_with_dispersion_penalty(
+                game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], 'position', stats_against=True)
    
             data[f'points_per_match_diff'] = self._all_points_per_match(game.home_name, game, game.home_points) - \
                 self._all_points_per_match(game.away_name, game, game.away_points)
@@ -183,12 +172,18 @@ class DataPreprocessor:
         return ret
     
     @staticmethod
-    def _opponents_positions_feture(team, games):
-        home_unq = games[games['home_name'] == team]['away_position'].unique()
-        away_unq = games[games['away_name'] == team]['home_position'].unique()
-        unq_positions = np.concat([home_unq, away_unq])
-        return np.unique(unq_positions).mean() - sqrt(unq_positions.max() - unq_positions.min())
-    
+    def _mean_with_dispersion_penalty(game, home, away, col, stats_against=False):
+        all_stats = []
+        order = ('away', 'home') if stats_against else ('home', 'away')
+
+        for team, matches in ((game.home_name, home), (game.away_name, away)):
+            stats = np.concat([matches[matches['home_name'] == team][f'{order[0]}_{col}'], 
+                      matches[matches['away_name'] == team][f'{order[1]}_{col}']])
+            all_stats.append(stats)
+            
+        all_stats = [x.mean() - sqrt(x.max() - x.min()) for x in all_stats]
+        return all_stats[0], all_stats[1], all_stats[0] - all_stats[1]
+
     @staticmethod
     def _stats_avg(game, home, away, col, stats_against=False):
         result = []
@@ -214,4 +209,12 @@ class DataPreprocessor:
 
 if __name__ == '__main__':
     dp = DataPreprocessor()
+    '''for row in dp.data.itertuples(index=True):
+        home_games = dp._previous_matches(row, row.home_name)
+        away_games = dp._previous_matches(row, row.away_name)
+        ret = dp._opponents_positions_feture(row.home_name, home_games), dp._opponents_positions_feture(row.away_name, away_games)
+        ret_b = dp._mean_with_dispersion_penalty(row, home_games, away_games, 'position', stats_against=True)
+        print(ret)
+        print(ret_b)
+        break'''
     dp.preprocess_data()

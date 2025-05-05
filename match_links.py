@@ -53,7 +53,7 @@ class GetLinks(PageInteractor):
 
                 # click show more matches
                 self.wait_and_click_button(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
-                sleep(0.5)
+                sleep(2)
             else:
                 break
 
