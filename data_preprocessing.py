@@ -5,7 +5,6 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 from math import sqrt
-from time import perf_counter
 
 
 class DataPreprocessor:
@@ -20,21 +19,21 @@ class DataPreprocessor:
         self._fill_lack_of_data()
         self._change_formation_to_num_data()
         self._extract_all_features()
-        s = perf_counter()
         self._fill_lack_of_data(all_cols=True)
-        e = perf_counter()
-        print(e-s)
         self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False, n_estimators=50, max_depth=10, max_iter=10, n_nearest_features=50):
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=100, max_depth=5, max_iter=10, n_nearest_features=50):
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
             max_depth=max_depth), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending',
-            skip_complete=True, n_nearest_features=n_nearest_features, random_state=0)
+            skip_complete=True, n_nearest_features=n_nearest_features, random_state=42, verbose=1)
         
         cols_not_to_impute = ['home_name', 'away_name', 'result']
         if not all_cols:
             cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
                             'home_formation', 'home_name', 'league', 'match_date', 'round']
+            
+        else:
+            self.data = self.data[self.data.isna().mean(axis=1) < 0.5]
 
         cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
         data_to_impute = self.data[cols_to_impute].copy()
@@ -113,7 +112,7 @@ class DataPreprocessor:
             data[f'home_poss_{i-2}-{i}'], data[f'away_poss_{i-2}-{i}'], data[f'poss_diff_{i-2}-{i}'] = \
                 self._mean_with_dispersion_penalty(game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], 'poss')
             
-            data[f'home_opp_positions_{i-2}-{i}'], data[f'away_opp_positions_{i-2}-{i}'], 
+            data[f'home_opp_positions_{i-2}-{i}'], data[f'away_opp_positions_{i-2}-{i}'], \
             data[f'opp_positions_diff_{i-2}-{i}']  = self._mean_with_dispersion_penalty(
                 game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], 'position', stats_against=True)
    
@@ -142,6 +141,13 @@ class DataPreprocessor:
         data['result'] = game.result
         data['home_name'] = game.home_name
         data['away_name'] = game.away_name
+        data['match_date'] = game.match_date
+
+        data['sts_home'], data['sts_draw'], data['sts_away'] = game.sts_home, game.sts_draw, game.sts_away
+        data['fortuna_home'], data['fortuna_draw'], data['fortuna_away'] = \
+            game.fortuna_home, game.fortuna_draw, game.fortuna_away
+        data['superbet_home'], data['superbet_draw'], data['superbet_away'] = \
+            game.superbet_home, game.superbet_draw, game.superbet_away
 
         return data
     

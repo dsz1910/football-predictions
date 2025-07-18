@@ -1,6 +1,8 @@
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
+from selenium import webdriver
+from time import sleep
 
 
 class PageInteractor:
@@ -53,3 +55,9 @@ class PageInteractor:
 
     def find_elements(self, driver, by_what, text):
         return driver.find_elements(by_what, text)
+    
+if __name__ == '__main__':
+    driver = webdriver.Chrome()
+    pi = PageInteractor()
+    pi.get_website(driver, 'https://www.flashscore.pl/mecz/pilka-nozna/xOCOaBcK/#/szczegoly-meczu/statystyki-meczu')
+    sleep(5)
