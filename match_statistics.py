@@ -120,12 +120,20 @@ class ScrapeStatistics(PageInteractor):
         final_data['home_goals'], final_data['away_goals'] = self._get_goals(driver)
         final_data['result'] = self._get_result(final_data['home_goals'], final_data['away_goals'])
         final_data['league'], final_data['round'] = self._get_league_and_round(driver)
+        sts, fortuna, superbet = self._get_odds(driver)
+        final_data['sts_home'], final_data['sts_draw'], final_data['sts_away'] = sts 
+        final_data['fortuna_home'], final_data['fortuna_draw'], final_data['fortuna_away'] = fortuna 
+        final_data['superbet_home'], final_data['superbet_draw'], final_data['superbet_away'] = superbet
 
         url = url.replace('statystyki-meczu/0', 'sklady')
+        self.get_website(driver, url)
 
-        if self.get_website(driver, url):
-            funcs = [self._get_formation, self._get_mean_raiting, self._get_excluded_players_count, self._get_coach]
-            values = sum((func(driver) for func in funcs), ())
+        if match_stats:
+            try:
+                funcs = [self._get_formation, self._get_mean_raiting, self._get_excluded_players_count, self._get_coach]
+                values = sum((func(driver) for func in funcs), ())
+            except TypeError:
+                values = [np.nan] * 8
         else:
             values = [np.nan] * 8
         
@@ -219,6 +227,15 @@ class ScrapeStatistics(PageInteractor):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'duelParticipant__startTime')
         start_time = self.find_element(driver, By.CLASS_NAME, 'duelParticipant__startTime').text
         return start_time
+    
+    @errors_handler
+    def _get_odds(self, driver):
+        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wclOddsContentOverall')
+        odds = self.find_elements(driver, By.CLASS_NAME, 'wclOddsContent')
+        odds = [x.text.split() for x in odds]
+        odds = [list(map(float, bookmaker)) for bookmaker in odds]
+        sts_odds, fortuna_odds, superbet_odds = odds
+        return sts_odds, fortuna_odds, superbet_odds
 
     @staticmethod
     def _split_home_and_away(data, key):
@@ -235,8 +252,8 @@ class ScrapeStatistics(PageInteractor):
         for team in stats['Podania']:
             left_paren = team.find('(')
             slash = team.find('/')
-            passes.append(float(team[slash+1 : -1])) # add all passes done by team
-            passes.append(float(team[left_paren+1 : slash])) # add accurate passes count
+            passes.append(float(team[slash + 1 : -1])) # add all passes done by team
+            passes.append(float(team[left_paren + 1 : slash])) # add accurate passes count
         return passes
     
     @staticmethod
@@ -298,11 +315,3 @@ if __name__ == '__main__':
     end = perf_counter()
     print('pobieranie statystyk trwało: ', end - start)
     print(stats_scraper.data)
-
-    '''   s = ScrapeStatistics(1)
-    page = s.matches[0][0]
-    print(page)
-    driver = webdriver.Chrome()
-    driver.get(page)
-    r = s._scrape_main_stats(driver)
-    print(r)'''
