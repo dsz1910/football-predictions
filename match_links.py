@@ -1,5 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from time import sleep, perf_counter
 from page_interactor import PageInteractor
 import pickle
@@ -48,24 +49,38 @@ class GetLinks(PageInteractor):
             self.wait_until_element_is_not_visible(self.driver, By.ID, 'onetrust-reject-all-handler')
 
         while True:
-            if self.is_element_present(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static'):
-                self.wait_until_element_is_not_visible(self.driver, By.CLASS_NAME, 'loadingOverlay')
 
+            if self.is_element_present(self.driver, By.CSS_SELECTOR,
+                    '.wclButtonLink.wcl-buttonLink_crZm3.wcl-primary_un6zG.wcl-underline_viepI'):
+                
                 # click show more matches
-                self.wait_and_click_button(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
+                self.wait_and_click_button(self.driver, By.CSS_SELECTOR,
+                    '.wclButtonLink.wcl-buttonLink_crZm3.wcl-primary_un6zG.wcl-underline_viepI')
+                #self.wait_and_click_button(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
                 sleep(2)
             else:
                 break
 
         # get matches links
         matches = self.find_elements(self.driver, By.CSS_SELECTOR, 'a.eventRowLink')
-        new_links = [(link.get_attribute('href') + '/statystyki-meczu/0', idx) for link in matches]
+        new_links = [(link.get_attribute('href') + '/statystyki-meczu/0', idx) 
+                     for link in matches]        # '/match-statistics/0'
         self.links += new_links
 
 
 if __name__ == '__main__':
     start = perf_counter()
-    driver = webdriver.Chrome()
+
+    options = Options()
+    options.add_argument('--headless=new')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+    options.add_argument('user-agent=TwójUserAgent')
+    driver = webdriver.Chrome(options=options)
+
     links_getter = GetLinks(driver)
     links_getter.get_all_links()
     end = perf_counter()

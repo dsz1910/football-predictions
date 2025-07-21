@@ -209,18 +209,24 @@ class DataPreprocessor:
         return matches
     
     def _save_data(self):
-        self.data.to_csv('train_data.csv', index=False, encoding='utf-8')
-        self.data.to_excel('train_data.xlsx', index=False, engine='openpyxl')
+        self.data.to_csv('stats_dataset.csv', index=False, encoding='utf-8')
+        self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
 
 
 if __name__ == '__main__':
+
+    from time import perf_counter
+    from match_statistics import ScrapeStatistics
+    start = perf_counter()
+    stats_scraper = ScrapeStatistics(6)
+    stats_scraper.get_all_stats()
+    end = perf_counter()
+    print('Scraping statistics time: ', end - start)
+    print(stats_scraper.data)
+
+
     dp = DataPreprocessor()
-    '''for row in dp.data.itertuples(index=True):
-        home_games = dp._previous_matches(row, row.home_name)
-        away_games = dp._previous_matches(row, row.away_name)
-        ret = dp._opponents_positions_feture(row.home_name, home_games), dp._opponents_positions_feture(row.away_name, away_games)
-        ret_b = dp._mean_with_dispersion_penalty(row, home_games, away_games, 'position', stats_against=True)
-        print(ret)
-        print(ret_b)
-        break'''
+    start = perf_counter()
     dp.preprocess_data()
+    end = perf_counter()
+    print(f'Data preprocessing time: {end - start}')

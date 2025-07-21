@@ -48,7 +48,8 @@ class ScrapeStatistics(PageInteractor):
                 self.task_queue.put((0, 0))
             self.task_queue.put(task)
 
-        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats, self.save_stats) for _ in range(self.threads_num)]
+        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats, self.save_stats) 
+                        for _ in range(self.threads_num)]
 
         for worker in self.workers:
             worker.start()
@@ -75,10 +76,10 @@ class ScrapeStatistics(PageInteractor):
 
         all_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-row_OFViZ')
         all_stats = [stats.text.split('\n') for stats in all_stats]
-        match_stats = {(stats[1] if 'Podania' not in stats else stats[2]) : 
-                       (stats[0], stats[2]) if 'Podania' not in stats else (stats[1], stats[-1])
-                        for stats in all_stats
-}
+        match_stats = {(stats[1] if 'Podania' not in stats else stats[2]) :  # 'Passes'
+                       (stats[0], stats[2]) if 'Podania' not in stats else (stats[1], stats[-1]) # 'Passes'
+                        for stats in all_stats}
+        
         return match_stats
         
     def _get_match_stats(self, driver, url, season_idx):
@@ -100,15 +101,16 @@ class ScrapeStatistics(PageInteractor):
         
         else:
             for key, value in stats_categories.items():
-                if key == 'Podania':
+                if key == 'Podania': # 'Passes'
                     final_data[f'home_{value}'], final_data[f'home_acc_{value}'], \
                         final_data[f'away_{value}'], final_data[f'away_acc_{value}'] = self._get_passes(match_stats)
                                 
-                elif key == 'Posiadanie piłki':
+                elif key == 'Posiadanie piłki': # 'Ball possesion'
                     if key not in match_stats:
                         final_data[f'home_{value}'], final_data[f'away_{value}'] = np.nan, np.nan
                     else:
-                        final_data[f'home_{value}'], final_data[f'away_{value}'] = self._get_possesion(match_stats[key])
+                        final_data[f'home_{value}'], final_data[f'away_{value}'] = self._get_possesion(
+                            match_stats[key])
 
                 else:
                     final_data[f'home_{value}'], final_data[f'away_{value}'] = self._split_home_and_away(
@@ -125,12 +127,13 @@ class ScrapeStatistics(PageInteractor):
         final_data['fortuna_home'], final_data['fortuna_draw'], final_data['fortuna_away'] = fortuna 
         final_data['superbet_home'], final_data['superbet_draw'], final_data['superbet_away'] = superbet
 
-        url = url.replace('statystyki-meczu/0', 'sklady')
+        url = url.replace('statystyki-meczu/0', 'sklady') # 'match-statistics/0', 'line-up'
         self.get_website(driver, url)
 
         if match_stats:
             try:
-                funcs = [self._get_formation, self._get_mean_raiting, self._get_excluded_players_count, self._get_coach]
+                funcs = [self._get_formation, self._get_mean_raiting, 
+                         self._get_excluded_players_count, self._get_coach]
                 values = sum((func(driver) for func in funcs), ())
             except TypeError:
                 values = [np.nan] * 8
@@ -193,9 +196,8 @@ class ScrapeStatistics(PageInteractor):
 
         formations = [x.text.split(('\n')) for x in formations]
 
-        if formations[0] == ['KURSY PRZEDMECZOWE'] or len(formations[0]) < 2:
-            self.get_website(driver, driver.current_url)
-            return self._get_formation(driver)
+        if formations[0] == ['KURSY'] or len(formations[0]) < 2: # 'ODDS'
+            return np.nan, np.nan
         return formations[0][0], formations[0][2]
     
     @staticmethod
@@ -214,7 +216,7 @@ class ScrapeStatistics(PageInteractor):
     def _get_league_and_round(self, driver):
         league_and_round = self.find_elements(driver, By.CLASS_NAME, 'wcl-scores-overline-03_0pkdl')[-1].text
 
-        round_start = league_and_round.find('KOLEJKA')
+        round_start = league_and_round.find('KOLEJKA') # 'ROUND'
         league_round = np.nan if round_start == -1 else int(league_and_round[round_start + 8 : ])
 
         league_end = league_and_round.find('-') - 1
@@ -233,7 +235,7 @@ class ScrapeStatistics(PageInteractor):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wclOddsContentOverall')
         odds = self.find_elements(driver, By.CLASS_NAME, 'wclOddsContent')
         odds = [x.text.split() for x in odds]
-        odds = [list(map(float, bookmaker)) for bookmaker in odds]
+        odds = [list(map(lambda x: float(x) if x != '-' else np.nan, bookmaker)) for bookmaker in odds]
         sts_odds, fortuna_odds, superbet_odds = odds
         return sts_odds, fortuna_odds, superbet_odds
 
@@ -245,11 +247,11 @@ class ScrapeStatistics(PageInteractor):
     
     @staticmethod
     def _get_passes(stats):
-        if 'Podania' not in stats:
+        if 'Podania' not in stats: # 'Passes'
             return np.nan, np.nan, np.nan, np.nan
         
         passes = []
-        for team in stats['Podania']:
+        for team in stats['Podania']: # 'Passes'
             left_paren = team.find('(')
             slash = team.find('/')
             passes.append(float(team[slash + 1 : -1])) # add all passes done by team
@@ -313,5 +315,5 @@ if __name__ == '__main__':
     stats_scraper = ScrapeStatistics(6)
     stats_scraper.get_all_stats()
     end = perf_counter()
-    print('pobieranie statystyk trwało: ', end - start)
+    print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
