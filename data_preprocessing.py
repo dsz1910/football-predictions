@@ -5,6 +5,7 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 from math import sqrt
+from time import perf_counter
 
 
 class DataPreprocessor:
@@ -214,17 +215,6 @@ class DataPreprocessor:
 
 
 if __name__ == '__main__':
-
-    from time import perf_counter
-    from match_statistics import ScrapeStatistics
-    start = perf_counter()
-    stats_scraper = ScrapeStatistics(6)
-    stats_scraper.get_all_stats()
-    end = perf_counter()
-    print('Scraping statistics time: ', end - start)
-    print(stats_scraper.data)
-
-
     dp = DataPreprocessor()
     start = perf_counter()
     dp.preprocess_data()
