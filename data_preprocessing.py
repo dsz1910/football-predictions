@@ -23,15 +23,18 @@ class DataPreprocessor:
         self._fill_lack_of_data(all_cols=True)
         self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False, n_estimators=100, max_depth=5, max_iter=10, n_nearest_features=50):
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=150, max_depth=5, max_iter=20, 
+                           n_nearest_features=50, min_samples_leaf=10, min_samples_split=20):
+        start = perf_counter()
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
-            max_depth=max_depth), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending',
+            max_depth=max_depth, min_samples_leaf=min_samples_leaf, min_samples_split=min_samples_split,
+            bootstrap=True), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending',
             skip_complete=True, n_nearest_features=n_nearest_features, random_state=42, verbose=1)
         
-        cols_not_to_impute = ['home_name', 'away_name', 'result']
+        cols_not_to_impute = ['home_name', 'away_name', 'result', 'match_date']
         if not all_cols:
             cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
-                            'home_formation', 'home_name', 'league', 'match_date', 'round']
+                            'home_formation', 'home_name', 'league', 'match_date', 'round', 'match_date']
             
         else:
             self.data = self.data[self.data.isna().mean(axis=1) < 0.5]
@@ -42,6 +45,8 @@ class DataPreprocessor:
         imputed_data = imputer.fit_transform(data_to_impute)
         imputed_data = pd.DataFrame(imputed_data, columns=cols_to_impute, index=self.data.index)
         self.data[cols_to_impute] = imputed_data
+        end = perf_counter()
+        print(f'Imputing time: {end - start}')
 
     def _clean_data(self):
         self.data = self.data[~self.data['home_name'].str.contains(
@@ -184,11 +189,11 @@ class DataPreprocessor:
         order = ('away', 'home') if stats_against else ('home', 'away')
 
         for team, matches in ((game.home_name, home), (game.away_name, away)):
-            stats = np.concat([matches[matches['home_name'] == team][f'{order[0]}_{col}'], 
+            stats = np.concatenate([matches[matches['home_name'] == team][f'{order[0]}_{col}'], 
                       matches[matches['away_name'] == team][f'{order[1]}_{col}']])
             all_stats.append(stats)
             
-        all_stats = [x.mean() - sqrt(x.max() - x.min()) for x in all_stats]
+        all_stats = [x.mean() - np.std(x) for x in all_stats]
         return all_stats[0], all_stats[1], all_stats[0] - all_stats[1]
 
     @staticmethod
