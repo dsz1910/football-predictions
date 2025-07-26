@@ -23,23 +23,24 @@ class DataPreprocessor:
         self._fill_lack_of_data(all_cols=True)
         self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False, n_estimators=150, max_depth=5, max_iter=20, 
-                           n_nearest_features=50, min_samples_leaf=10, min_samples_split=20):
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=100, max_depth=5, max_iter=20, 
+                           n_nearest_features=50, min_samples_leaf=50, min_samples_split=100):
         start = perf_counter()
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
             max_depth=max_depth, min_samples_leaf=min_samples_leaf, min_samples_split=min_samples_split,
-            bootstrap=True), max_iter=max_iter, initial_strategy='mean', imputation_order='ascending',
-            skip_complete=True, n_nearest_features=n_nearest_features, random_state=42, verbose=1)
+            bootstrap=True, n_jobs=4, max_features='sqrt'), max_iter=max_iter, initial_strategy='mean', 
+            imputation_order='ascending', skip_complete=True, n_nearest_features=n_nearest_features, 
+            random_state=42, verbose=2)
         
-        cols_not_to_impute = ['home_name', 'away_name', 'result', 'match_date']
+        non_imputed_columns = ['home_name', 'away_name', 'result', 'match_date']
         if not all_cols:
-            cols_not_to_impute = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
+            non_imputed_columns = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
                             'home_formation', 'home_name', 'league', 'match_date', 'round', 'match_date']
             
         else:
             self.data = self.data[self.data.isna().mean(axis=1) < 0.5]
 
-        cols_to_impute = [col for col in self.data.columns if col not in cols_not_to_impute]
+        cols_to_impute = [col for col in self.data.columns if col not in non_imputed_columns]
         data_to_impute = self.data[cols_to_impute].copy()
 
         imputed_data = imputer.fit_transform(data_to_impute)
@@ -215,8 +216,8 @@ class DataPreprocessor:
         return matches
     
     def _save_data(self):
-        self.data.to_csv('stats_dataset.csv', index=False, encoding='utf-8')
-        self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
+        self.data.to_csv(f'stats_dataset.csv', index=False, encoding='utf-8')
+        self.data.to_excel(f'stats_dataset.xlsx', index=False, engine='openpyxl')
 
 
 if __name__ == '__main__':
