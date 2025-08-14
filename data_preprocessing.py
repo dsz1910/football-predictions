@@ -4,27 +4,45 @@ import numpy as np
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
-from math import sqrt
 from time import perf_counter
 
 
 class DataPreprocessor:
 
-    def __init__(self):
+    def __init__(self, get_time_series_data):
+        self.get_time_series_data = get_time_series_data
         vt = VirtualTable()
         vt.simulate_all_seasons()
         self.data = vt.stats
+        self.stats_tuple = (
+            'xG',
+            'shots',
+            'acc_shots',
+            'inacc_shots',
+            'passes',
+            'acc_passes',
+            'corners',
+            'goalkeeper_saves',
+            'free_kicks',
+            'offsides',
+            'fouls',
+            'goals',
+            'mean_raiting',
+            'excluded_count')
     
     def preprocess_data(self):
         self._clean_data()
         self._fill_lack_of_data()
-        self._change_formation_to_num_data()
-        self._extract_all_features()
-        self._fill_lack_of_data(all_cols=True)
+        self._change_formation_to_numeric_data()
+        self._extract_all_features_per_3_match_groups()
+        if not self.get_time_series_data:
+            self._fill_lack_of_data(all_cols=True, n_nearest_features=50)
+        else:
+            self._get_all_time_series()
         self._save_data()
 
-    def _fill_lack_of_data(self, all_cols=False, n_estimators=100, max_depth=5, max_iter=20, 
-                           n_nearest_features=50, min_samples_leaf=50, min_samples_split=100):
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=300, max_depth=5, max_iter=30, 
+                           n_nearest_features=15, min_samples_leaf=50, min_samples_split=100):
         start = perf_counter()
         imputer = IterativeImputer(estimator=RandomForestRegressor(n_estimators=n_estimators, 
             max_depth=max_depth, min_samples_leaf=min_samples_leaf, min_samples_split=min_samples_split,
@@ -54,7 +72,7 @@ class DataPreprocessor:
             '(', na=False, regex=False)]
         self.data = self.data[self.data['home_poss'].notnull()]
 
-    def _change_formation_to_num_data(self):
+    def _change_formation_to_numeric_data(self):
         self.data['home_defenders_num'] = self.data['home_formation'].apply(
             lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
         
@@ -66,13 +84,92 @@ class DataPreprocessor:
         
         self.data['away_formation'] = self.data['away_formation'].apply(
             lambda x: int(x.replace(' - ', '')) if pd.notna(x) else np.nan).astype('Int64')
+        
+    def _set_result_from_team_perspectives(self):
+        self.data['result_from_home_perspective'] = self.data['result'].replace(2, -1, inplace=False)
+        self.data['result_from_away_perspective'] = - self.data['result_from_home_perspective']
 
-    def _extract_all_features(self):
+    def _get_all_time_series(self):
+        time_series = []
+        self._set_result_from_team_perspectives()
+        
+        for season in range(self.data['season'].min(), self.data['season'].max() + 1):
+            self._get_time_series_for_season(season)
+
+    def _get_time_series_for_season(self, season):
+        season_time_series = []
+        season_matches = self.data.query('season == @season').copy()
+        teams = season_matches['home_name'].unique()
+
+        for team in teams:
+            matches = season_matches.query('home_name == @team or away_name == @team').copy()
+            season_time_series.append(self._get_time_series_for_team(team, matches))
+    
+    def _get_result_from_team_perspective(self, team, df):
+        mask = df['home_name'] == team
+
+        df['result_from_team_perspective'] = np.where(
+            mask,
+            df['result_from_home_perspective'],
+            df['result_from_away_perspective']
+            )
+        
+        df['at_home'] = mask.astype(int)
+
+    def _extract_static_data(self, df_dict):
+        for ts, static in df_dict.values():
+            row = ts.loc[ts['match_date'].idxmax(), :]
+            ts.drop(index=row.name, inplace=True)
+
+            static_data = {'home_points' : row['home_points'],
+                           'home_position' : row['home_position'],
+                           'away_points' : row['away_points'],
+                           'away_position' : row['away_position'],
+                           'goals_scored_ratio' : None,
+                           'goals_conceded_ratio' : None,
+                           'raiting_ratio' : None,
+                           'xG_ratio' : None
+                           }
+
+            static = pd.DataFrame()
+            
+
+    def _create_rolling_datasets_for_team(self, df):
+        time_series_collection = list(df.rolling(window=55))
+        time_series_collection = {
+            (ts.loc[ts['match_date'].idxmax(), 'match_date'],
+             ts.loc[ts['match_date'].idxmax(), 'home_name']
+             ) : [ts, None]
+              for ts in time_series_collection if len(ts) > 3
+              }
+        
+        return time_series_collection
+
+    def _get_time_series_for_team(self, team, team_time_series):
+        self._get_result_from_team_perspective(team, team_time_series)
+        self._coach_matches(team_time_series, team, None, get_multiple_results=True)
+        
+        team_time_series.drop(['result_from_home_perspective',
+                      'league',
+                      'result_from_away_perspective',
+                      'away_poss',
+                      'home_coach',
+                      'away_coach'],
+                      axis=1,
+                      inplace=True)
+        
+        # must apply rolling window
+        team_time_series = self._create_rolling_datasets_for_team(team_time_series)
+        # must extract static data
+        team_time_series = self._extract_static_data(team_time_series)
+            
+
+    def _extract_all_features_per_3_match_groups(self):
         final_stats = []
         self.data['position_diff'] = self.data['home_position'] - self.data['away_position']
 
         for game in self.data.itertuples(index=True):
-            result = self._extract_match_features(game)
+            result = self._extract_match_stats_per_3_match_groups(game)
             if result:
                 final_stats.append(result)
             if game.Index % 1000 == 0:
@@ -81,7 +178,7 @@ class DataPreprocessor:
         self.final_data = final_stats
         self.data = pd.DataFrame(final_stats)
 
-    def _extract_match_features(self, game):
+    def _extract_match_stats_per_3_match_groups(self, game):
         home_matches = self._previous_matches(game, game.home_name)
         away_matches = self._previous_matches(game, game.away_name)
 
@@ -90,24 +187,9 @@ class DataPreprocessor:
         
         data = {}
         stop = 10 if home_matches.shape[0] > 6 < away_matches.shape[0] else 7
-        stats_tuple = (
-    'xG',
-    'shots',
-    'acc_shots',
-    'inacc_shots',
-    'passes',
-    'acc_passes',
-    'corners',
-    'goalkeeper_saves',
-    'free_kicks',
-    'offsides',
-    'fouls',
-    'goals',
-    'mean_raiting',
-    'excluded_count')
         
         for i in range(3, stop, 3):
-            for stats in stats_tuple:
+            for stats in self.stats_tuple:
                 data[f'home_{stats}_{i-2}-{i}'], data[f'away_{stats}_{i-2}-{i}'], \
                     data[f'{stats}_diff_{i-2}-{i}'] = self._mean_with_dispersion_penalty(
                         game, home_matches.iloc[i-3:i], away_matches.iloc[i-3:i], stats)
@@ -179,10 +261,28 @@ class DataPreprocessor:
         return points / matches_count
 
     @staticmethod
-    def _coach_matches(games, team, coach):
-        ret =  games[((games['home_coach'] == coach) & (games['home_name'] == team)) |
-                     ((games['away_coach'] == coach) & (games['away_name'] == team))].shape[0]
-        return ret
+    def _coach_matches(games, team, coach, get_multiple_results=False):
+        if not get_multiple_results:
+            return games[((games['home_coach'] == coach) & (games['home_name'] == team)) |
+                        ((games['away_coach'] == coach) & (games['away_name'] == team))].shape[0]
+        
+        games['coach'] = np.where(games['home_name'] == team,
+                                              games['home_coach'],
+                                              games['away_coach'])
+
+        games['rivals_name'] = np.where(games['home_name'] != team,
+                               games['home_name'],
+                               games['away_name'])
+        
+        games['rivals_coach'] = np.where(games['home_name'] == games['rivals_name'],
+                                              games['home_coach'],
+                                              games['away_coach'])
+        
+        games = games.sort_values(by='match_date')
+        games['coach_matches'] = games.groupby('coach').cumcount() + 1
+        games['rivals_coach_matches'] = games.groupby('rivals_coach').cumcount() + 1
+
+        games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
     
     @staticmethod
     def _mean_with_dispersion_penalty(game, home, away, col, stats_against=False):
@@ -208,12 +308,15 @@ class DataPreprocessor:
         
         return result[0], result[1], result[0] - result[1]
 
-    def _previous_matches(self, game, team):
+    def _previous_matches(self, game, team, all_previous=True):
         matches = self.data[(self.data['match_date'] < game.match_date) & 
             (self.data['season'] == game.season) &
             ((self.data['home_name'] == team) | (self.data['away_name'] == team))].sort_values(
-                by='match_date', ascending=False).head(9).reset_index(drop=True)
-        return matches
+                by='match_date', ascending=False)
+        
+        if all_previous:
+            return matches
+        return matches.head(9).reset_index(drop=True)
     
     def _save_data(self):
         self.data.to_csv(f'stats_dataset.csv', index=False, encoding='utf-8')
@@ -221,7 +324,8 @@ class DataPreprocessor:
 
 
 if __name__ == '__main__':
-    dp = DataPreprocessor()
+    ParallelPandas.initialize(n_cpu=None, split_factor=4, disable_pr_bar=False)
+    dp = DataPreprocessor(True)
     start = perf_counter()
     dp.preprocess_data()
     end = perf_counter()

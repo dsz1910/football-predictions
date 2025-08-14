@@ -29,7 +29,7 @@ class GetLinks(PageInteractor):
 
     @staticmethod
     def _read_leagues_to_scrape():
-        with open('leagues_to_scrape.txt', 'r') as file:
+        with open('leagues_to_scrape.txt', 'r') as file:  # file with links to leagues
             leagues_lst = [line.strip() for line in file]
         return leagues_lst
 
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
     options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument('user-agent=TwójUserAgent')
+    options.add_argument('user-agent=ąćęó')
     driver = webdriver.Chrome(options=options)
 
     links_getter = GetLinks(driver)

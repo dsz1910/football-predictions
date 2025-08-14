@@ -127,7 +127,7 @@ class ScrapeStatistics(PageInteractor):
         final_data['fortuna_home'], final_data['fortuna_draw'], final_data['fortuna_away'] = fortuna 
         final_data['superbet_home'], final_data['superbet_draw'], final_data['superbet_away'] = superbet
 
-        url = url.replace('statystyki-meczu/0', 'sklady') # 'match-statistics/0', 'line-up'
+        url = url.replace('statystyki-meczu/0', 'sklady') # 'match-statistics/0', 'line-ups'
         self.get_website(driver, url)
 
         if match_stats:
@@ -278,6 +278,15 @@ class ScrapeStatistics(PageInteractor):
 
 class Worker(threading.Thread):
 
+    options = Options()
+    options.add_argument('--headless=new')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+    options.add_argument('user-agent=ąćęó')
+    
     def __init__(self, task_queue, results, task, saver):
         super().__init__()
         self.driver = None
@@ -286,17 +295,8 @@ class Worker(threading.Thread):
         self.task = task
         self.saver = saver
 
-        self.options = Options()
-        self.options.add_argument('--headless=new')
-        self.options.add_argument('--disable-gpu')
-        self.options.add_argument('--window-size=1920,1080')
-        self.options.add_argument('--disable-blink-features=AutomationControlled')
-        self.options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        self.options.add_experimental_option('useAutomationExtension', False)
-        self.options.add_argument('user-agent=TwójUserAgent')
-
     def run(self):
-        self.driver = webdriver.Chrome(options=self.options)
+        self.driver = webdriver.Chrome(options=Worker.options)
 
         while not self.task_queue.empty():
             match, season_idx = self.task_queue.get()
