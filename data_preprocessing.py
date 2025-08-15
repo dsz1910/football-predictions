@@ -324,7 +324,6 @@ class DataPreprocessor:
 
 
 if __name__ == '__main__':
-    ParallelPandas.initialize(n_cpu=None, split_factor=4, disable_pr_bar=False)
     dp = DataPreprocessor(True)
     start = perf_counter()
     dp.preprocess_data()
