@@ -19,19 +19,19 @@ class DataPreprocessor:
         self._clean_data()
         self._fill_lack_of_data()
         self._change_formation_to_numeric_data()
-        self._extract_all_features_per_3_match_groups()
         if not self.get_time_series_data:
-            self._fill_lack_of_data(all_cols=True, n_nearest_features=50)
+            self._extract_all_features_per_3_match_groups()
+            self._fill_lack_of_data(all_cols=True, n_nearest_features=100)
         else:
             self._get_all_time_series()
         self._save_data()
 
     def _fill_lack_of_data(self, all_cols=False, n_estimators=300, max_depth=5, max_iter=30, 
-                           n_nearest_features=15, min_samples_leaf=50, min_samples_split=100):
+                           n_nearest_features=40, min_samples_leaf=50, min_samples_split=100):
         
         imputer = IterativeImputer(estimator=ExtraTreesRegressor(n_estimators=n_estimators, 
             max_depth=max_depth, min_samples_leaf=min_samples_leaf, min_samples_split=min_samples_split,
-            bootstrap=True, n_jobs=4, max_features='sqrt'), max_iter=max_iter, initial_strategy='mean', 
+            bootstrap=True, n_jobs=-1, max_features='sqrt'), max_iter=max_iter, initial_strategy='mean', 
             imputation_order='ascending', skip_complete=True, n_nearest_features=n_nearest_features, 
             random_state=42, verbose=2)
         
@@ -72,22 +72,6 @@ class DataPreprocessor:
         self.data['result_from_home_perspective'] = self.data['result'].replace(2, -1, inplace=False)
         self.data['result_from_away_perspective'] = - self.data['result_from_home_perspective']
 
-    def _get_all_time_series(self):
-        all_time_series = {}
-        self._set_result_from_team_perspectives()
-        
-        for season in range(self.data['season'].min(), self.data['season'].max() + 1):
-            self._get_time_series_for_season(season)
-
-    def _get_time_series_for_season(self, season):
-        season_time_series = {}
-        season_matches = self.data.query('season == @season').copy()
-        teams = season_matches['home_name'].unique()
-
-        for team in teams:
-            matches = season_matches.query('home_name == @team or away_name == @team').copy()
-            season_time_series.update(self._get_time_series_for_team(team, matches))
-    
     def _get_result_from_team_perspective(self, team, df):
         mask = df['home_name'] == team
 
@@ -99,46 +83,44 @@ class DataPreprocessor:
         
         df['at_home'] = mask.astype(int)
 
-    def _extract_static_data(self, df_dict):
-        for key in df_dict.keys():
-            ts = df_dict[key][0]
-            row = ts.loc[ts['match_date'].idxmax(), :]
-            ts.drop(index=row.name, inplace=True)
+    def _extract_static_data(self, ts):
+        row = ts.loc[ts['match_date'].idxmax(), :]
+        ts.drop(index=row.name, inplace=True)
 
-            static = {'home_points' : row['home_points'],
-                      'home_position' : row['home_position'],
-                      'away_points' : row['away_points'],
-                      'away_position' : row['away_position'],
-                      'goals_scored_ratio' : None,
-                      'goals_conceded_ratio' : None,
-                      'raiting_ratio' : None,
-                      'xG_ratio' : None
-                      }
+        static = {'home_points' : row['home_points'],
+                  'home_position' : row['home_position'],
+                  'away_points' : row['away_points'],
+                  'away_position' : row['away_position'],
+                  'goals_scored_ratio' : None,
+                  'goals_conceded_ratio' : None,
+                  'raiting_ratio' : None,
+                  'xG_ratio' : None
+                  }
             
-            home_goals_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'goals')
-            away_goals_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'goals')
-            static['goals_scored_ratio'] = home_goals_sum / away_goals_sum
+        home_goals_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'goals')
+        away_goals_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'goals')
+        static['goals_scored_ratio'] = home_goals_sum / away_goals_sum
 
-            home_goals_conceded = self._sum_choosen_stats(
-                row['home_name'], row['season'], row['match_date'], 'goals', against=True)
-            away_goals_conceded = self._sum_choosen_stats(
-                row['away_name'], row['season'], row['match_date'], 'goals', against=True)
-            static['goals_conceded_ratio'] = home_goals_conceded / away_goals_conceded
+        home_goals_conceded = self._sum_choosen_stats(
+            row['home_name'], row['season'], row['match_date'], 'goals', against=True)
+        away_goals_conceded = self._sum_choosen_stats(
+            row['away_name'], row['season'], row['match_date'], 'goals', against=True)
+        static['goals_conceded_ratio'] = home_goals_conceded / away_goals_conceded
 
-            home_raiting_mean = self._choosen_stats_mean(
-                row['home_name'], row['season'], row['match_date'], 'mean_raiting')
-            away_raiting_mean = self._choosen_stats_mean(
-                row['away_name'], row['season'], row['match_date'], 'mean_raiting')
-            static['raiting_ratio'] = home_raiting_mean / away_raiting_mean
+        home_raiting_mean = self._choosen_stats_mean(
+            row['home_name'], row['season'], row['match_date'], 'mean_raiting')
+        away_raiting_mean = self._choosen_stats_mean(
+            row['away_name'], row['season'], row['match_date'], 'mean_raiting')
+        static['raiting_ratio'] = home_raiting_mean / away_raiting_mean
 
-            home_xg_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'xG')
-            away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
-            static['xG_ratio'] = home_xg_sum / away_xg_sum
+        home_xg_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'xG')
+        away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
+        static['xG_ratio'] = home_xg_sum / away_xg_sum
             
-            static = pd.DataFrame(static)
-            df_dict[key] = (ts, static)
+        static = pd.DataFrame(static)
+        ts_and_static = [static, ts]
 
-        return df_dict
+        return ts_and_static
     
     def _get_previous_matches_from_data_frame(self, team, season, date):
         games = self.data.loc[
@@ -169,10 +151,44 @@ class DataPreprocessor:
         time_series_collection = {
             (ts.loc[ts['match_date'].idxmax(), 'match_date'],
              ts.loc[ts['match_date'].idxmax(), 'home_name']
-             ) : [ts]
+             ) : ts
               for ts in time_series_collection if len(ts) > 3
               }
         return time_series_collection
+
+    def _get_all_time_series(self):
+        all_time_series = {}
+        self._set_result_from_team_perspectives()
+        
+        for season in range(self.data['season'].min(), self.data['season'].max() + 1):
+            season_time_series = self._get_time_series_for_season(season)
+            all_time_series.update(season_time_series)
+
+        return all_time_series
+
+    def _get_time_series_for_season(self, season):
+        season_time_series = {}
+        season_matches = self.data.query('season == @season').copy()
+        teams = season_matches['home_name'].unique()
+
+        for team in teams:
+            matches = season_matches.query('home_name == @team or away_name == @team').copy()
+            team_time_series = self._get_time_series_for_team(team, matches)
+            self._add_to_seson_time_series(season_time_series, team_time_series)
+
+        return season_time_series
+    
+    def _add_to_seson_time_series(self, season_ts, team_ts):
+        for key, val in team_ts.items():
+            if key not in season_ts.keys():
+                team_ts[key] = self._extract_static_data(val)
+                season_ts[key] = [*team_ts[key]]
+            else:
+                row = team_ts[key].drop(team_ts[key].loc[key[0]])
+                if key[1] == row['home_name']:
+                    season_ts[key].insert(1, team_ts[key])
+                else:
+                    season_ts[key].append(team_ts[key])
 
     def _get_time_series_for_team(self, team, team_time_series):
         self._get_result_from_team_perspective(team, team_time_series)
@@ -188,8 +204,8 @@ class DataPreprocessor:
                       inplace=True)
         
         team_time_series = self._create_rolling_datasets_for_team(team_time_series)
-        team_time_series = self._extract_static_data(team_time_series)
-            
+        return team_time_series
+
     def _extract_all_features_per_3_match_groups(self):
         final_stats = []
         self.data['position_diff'] = self.data['home_position'] - self.data['away_position']
