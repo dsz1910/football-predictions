@@ -117,7 +117,7 @@ class DataPreprocessor:
         away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
         static['xG_ratio'] = home_xg_sum / away_xg_sum
             
-        static = pd.DataFrame(static)
+        static = pd.DataFrame(static, index=[0])
         ts_and_static = [static, ts]
 
         return ts_and_static
@@ -136,7 +136,7 @@ class DataPreprocessor:
         return stats_sum / games.shape[0]
 
     def _sum_choosen_stats(self, team, season, date, stats, against=False, games=None):
-        if not games:
+        if games is None:
             games = self._get_previous_matches_from_data_frame(team, season, date)
 
         if against:
@@ -160,7 +160,7 @@ class DataPreprocessor:
         all_time_series = {}
         self._set_result_from_team_perspectives()
         
-        for season in range(self.data['season'].min(), self.data['season'].max() + 1):
+        for season in range(int(self.data['season'].min()), int(self.data['season'].max() + 1)):
             season_time_series = self._get_time_series_for_season(season)
             all_time_series.update(season_time_series)
 
@@ -174,11 +174,11 @@ class DataPreprocessor:
         for team in teams:
             matches = season_matches.query('home_name == @team or away_name == @team').copy()
             team_time_series = self._get_time_series_for_team(team, matches)
-            self._add_to_seson_time_series(season_time_series, team_time_series)
+            self._add_to_season_time_series(season_time_series, team_time_series)
 
         return season_time_series
     
-    def _add_to_seson_time_series(self, season_ts, team_ts):
+    def _add_to_season_time_series(self, season_ts, team_ts):
         for key, val in team_ts.items():
             if key not in season_ts.keys():
                 team_ts[key] = self._extract_static_data(val)
@@ -382,8 +382,9 @@ class DataPreprocessor:
         return matches.head(9).reset_index(drop=True)
     
     def _save_data(self):
-        self.data.to_csv(f'stats_dataset.csv', index=False, encoding='utf-8')
-        self.data.to_excel(f'stats_dataset.xlsx', index=False, engine='openpyxl')
+        name = 'time_series_dataset' if self.get_time_series_data else 'stats_dataset'
+        self.data.to_csv(f'{name}.csv', index=False, encoding='utf-8')
+        self.data.to_excel(f'{name}.xlsx', index=False, engine='openpyxl')
 
 
 if __name__ == '__main__':
