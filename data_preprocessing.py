@@ -5,6 +5,7 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import ExtraTreesRegressor
 from time import perf_counter
+import pickle
 
 
 class DataPreprocessor:
@@ -56,11 +57,12 @@ class DataPreprocessor:
         self.data = self.data[self.data['home_poss'].notnull()]
 
     def _change_formation_to_numeric_data(self):
-        self.data['home_defenders_num'] = self.data['home_formation'].apply(
-            lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
-        
-        self.data['away_defenders_num'] = self.data['away_formation'].apply(
-            lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
+        if not self.get_time_series_data:
+                self.data['home_defenders_num'] = self.data['home_formation'].apply(
+                    lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
+                
+                self.data['away_defenders_num'] = self.data['away_formation'].apply(
+                    lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
 
         self.data['home_formation'] = self.data['home_formation'].apply(
             lambda x: int(x.replace(' - ', '')) if pd.notna(x) else np.nan).astype('Int64')
@@ -96,26 +98,27 @@ class DataPreprocessor:
                   'raiting_ratio' : None,
                   'xG_ratio' : None
                   }
-            
+        
         home_goals_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'goals')
         away_goals_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'goals')
-        static['goals_scored_ratio'] = home_goals_sum / away_goals_sum
+        static['goals_scored_ratio'] = home_goals_sum / away_goals_sum if away_goals_sum else home_goals_sum
 
         home_goals_conceded = self._sum_choosen_stats(
             row['home_name'], row['season'], row['match_date'], 'goals', against=True)
         away_goals_conceded = self._sum_choosen_stats(
             row['away_name'], row['season'], row['match_date'], 'goals', against=True)
-        static['goals_conceded_ratio'] = home_goals_conceded / away_goals_conceded
+        static['goals_conceded_ratio'] = home_goals_conceded / away_goals_conceded if away_goals_conceded \
+                                                                                    else home_goals_conceded
+
+        home_xg_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'xG')
+        away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
+        static['xG_ratio'] = home_xg_sum / away_xg_sum if away_xg_sum else home_xg_sum
 
         home_raiting_mean = self._choosen_stats_mean(
             row['home_name'], row['season'], row['match_date'], 'mean_raiting')
         away_raiting_mean = self._choosen_stats_mean(
             row['away_name'], row['season'], row['match_date'], 'mean_raiting')
         static['raiting_ratio'] = home_raiting_mean / away_raiting_mean
-
-        home_xg_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'xG')
-        away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
-        static['xG_ratio'] = home_xg_sum / away_xg_sum
             
         static = pd.DataFrame(static, index=[0])
         ts_and_static = [static, ts]
@@ -164,7 +167,7 @@ class DataPreprocessor:
             season_time_series = self._get_time_series_for_season(season)
             all_time_series.update(season_time_series)
 
-        return all_time_series
+        self.data = all_time_series
 
     def _get_time_series_for_season(self, season):
         season_time_series = {}
@@ -184,8 +187,10 @@ class DataPreprocessor:
                 team_ts[key] = self._extract_static_data(val)
                 season_ts[key] = [*team_ts[key]]
             else:
-                row = team_ts[key].drop(team_ts[key].loc[key[0]])
-                if key[1] == row['home_name']:
+                row = team_ts[key].loc[team_ts[key]['match_date'] == key[0]]
+                team_ts[key].drop(index=row.index, inplace=True)
+
+                if key[1] == row['home_name'].iloc[0]:
                     season_ts[key].insert(1, team_ts[key])
                 else:
                     season_ts[key].append(team_ts[key])
@@ -199,7 +204,18 @@ class DataPreprocessor:
                       'result_from_away_perspective',
                       'away_poss',
                       'home_coach',
-                      'away_coach'],
+                      'away_coach',
+                      'season',
+                      'sts_home',
+                      'sts_draw',
+                      'sts_away',
+                      'fortuna_home',
+                      'fortuna_draw',
+                      'fortuna_away',
+                      'superbet_home',
+                      'superbet_draw',
+                      'superbet_away'
+                      ],
                       axis=1,
                       inplace=True)
         
@@ -338,10 +354,9 @@ class DataPreprocessor:
                                          games['home_coach'],
                                          games['away_coach'])
         
-        games = games.sort_values(by='match_date')
+        games.sort_values(by='match_date', inplace=True)
         games['coach_matches'] = games.groupby('coach').cumcount() + 1
         games['rivals_coach_matches'] = games.groupby('rivals_coach').cumcount() + 1
-
         games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
     
     @staticmethod
@@ -382,9 +397,12 @@ class DataPreprocessor:
         return matches.head(9).reset_index(drop=True)
     
     def _save_data(self):
-        name = 'time_series_dataset' if self.get_time_series_data else 'stats_dataset'
-        self.data.to_csv(f'{name}.csv', index=False, encoding='utf-8')
-        self.data.to_excel(f'{name}.xlsx', index=False, engine='openpyxl')
+        if self.get_time_series_data:
+            with open('time_series_dataset.pkl', 'wb') as file:
+                pickle.dump(self.data, file)
+        else:
+            self.data.to_csv('stats_dataset.csv', index=False, encoding='utf-8')
+            self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
 
 
 if __name__ == '__main__':
