@@ -54,7 +54,9 @@ class DataPreprocessor:
     def _clean_data(self):
         self.data = self.data.loc[~self.data['home_name'].str.contains(
             '(', na=False, regex=False)]
-        self.data = self.data[self.data['home_poss'].notnull()]
+        self.data = self.data.loc[self.data['home_poss'].notnull()]
+        self.data = self.data.loc[self.data.groupby('home_name').home_name.transform('count') > 3]
+        self.data = self.data.loc[self.data.groupby('away_name').away_name.transform('count') > 3]
 
     def _change_formation_to_numeric_data(self):
         if not self.get_time_series_data:
@@ -88,6 +90,7 @@ class DataPreprocessor:
     def _extract_static_data(self, ts):
         row = ts.loc[ts['match_date'].idxmax(), :]
         ts.drop(index=row.name, inplace=True)
+        ts.drop(['result', 'season'], axis=1, inplace=True)
 
         static = {'home_points' : row['home_points'],
                   'home_position' : row['home_position'],
@@ -96,28 +99,37 @@ class DataPreprocessor:
                   'goals_scored_ratio' : None,
                   'goals_conceded_ratio' : None,
                   'raiting_ratio' : None,
-                  'xG_ratio' : None
+                  'xG_ratio' : None,
+                  'result' : row['result']
                   }
         
-        home_goals_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'goals')
-        away_goals_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'goals')
+        home_previous_games = self._get_previous_matches_from_data_frame(
+            row['home_name'], row['season'], row['match_date'])
+        away_previous_games = self._get_previous_matches_from_data_frame(
+            row['away_name'], row['season'], row['match_date'])
+        
+        if not home_previous_games.shape[0] or not away_previous_games.shape[0]:
+            return None
+        
+        home_goals_sum = self._sum_choosen_stats(row['home_name'],'goals', home_previous_games)
+        away_goals_sum = self._sum_choosen_stats(row['away_name'], 'goals', away_previous_games)
         static['goals_scored_ratio'] = home_goals_sum / away_goals_sum if away_goals_sum else home_goals_sum
 
         home_goals_conceded = self._sum_choosen_stats(
-            row['home_name'], row['season'], row['match_date'], 'goals', against=True)
+            row['home_name'], 'goals', home_previous_games, against=True)
         away_goals_conceded = self._sum_choosen_stats(
-            row['away_name'], row['season'], row['match_date'], 'goals', against=True)
+            row['away_name'], 'goals', away_previous_games, against=True)
         static['goals_conceded_ratio'] = home_goals_conceded / away_goals_conceded if away_goals_conceded \
                                                                                     else home_goals_conceded
 
-        home_xg_sum = self._sum_choosen_stats(row['home_name'], row['season'], row['match_date'], 'xG')
-        away_xg_sum = self._sum_choosen_stats(row['away_name'], row['season'], row['match_date'], 'xG')
+        home_xg_sum = self._sum_choosen_stats(row['home_name'], 'xG', home_previous_games)
+        away_xg_sum = self._sum_choosen_stats(row['away_name'], 'xG', away_previous_games)
         static['xG_ratio'] = home_xg_sum / away_xg_sum if away_xg_sum else home_xg_sum
 
         home_raiting_mean = self._choosen_stats_mean(
-            row['home_name'], row['season'], row['match_date'], 'mean_raiting')
+            row['home_name'], 'mean_raiting', home_previous_games)
         away_raiting_mean = self._choosen_stats_mean(
-            row['away_name'], row['season'], row['match_date'], 'mean_raiting')
+            row['away_name'], 'mean_raiting', away_previous_games)
         static['raiting_ratio'] = home_raiting_mean / away_raiting_mean
             
         static = pd.DataFrame(static, index=[0])
@@ -133,15 +145,11 @@ class DataPreprocessor:
                 ]
         return games
 
-    def _choosen_stats_mean(self, team, season, date, stats, against=False):
-        games = self._get_previous_matches_from_data_frame(team, season, date)
-        stats_sum = self._sum_choosen_stats(team, season, date, stats, against=against, games=games)
+    def _choosen_stats_mean(self, team, stats, games, against=False):
+        stats_sum = self._sum_choosen_stats(team, stats, against=against, games=games)
         return stats_sum / games.shape[0]
-
-    def _sum_choosen_stats(self, team, season, date, stats, against=False, games=None):
-        if games is None:
-            games = self._get_previous_matches_from_data_frame(team, season, date)
-
+    
+    def _sum_choosen_stats(self, team, stats, games, against=False):
         if against:
             return games[games['home_name'] == team][f'away_{stats}'].sum() + \
                 games[games['away_name'] == team][f'home_{stats}'].sum()
@@ -155,7 +163,7 @@ class DataPreprocessor:
             (ts.loc[ts['match_date'].idxmax(), 'match_date'],
              ts.loc[ts['match_date'].idxmax(), 'home_name']
              ) : ts
-              for ts in time_series_collection if len(ts) > 3
+              for ts in time_series_collection if ts.shape[0] > 3
               }
         return time_series_collection
 
@@ -184,8 +192,10 @@ class DataPreprocessor:
     def _add_to_season_time_series(self, season_ts, team_ts):
         for key, val in team_ts.items():
             if key not in season_ts.keys():
-                team_ts[key] = self._extract_static_data(val)
-                season_ts[key] = [*team_ts[key]]
+                ret = self._extract_static_data(val)
+                if ret is not None:  
+                    team_ts[key] = self._extract_static_data(val)
+                    season_ts[key] = [*team_ts[key]]
             else:
                 row = team_ts[key].loc[team_ts[key]['match_date'] == key[0]]
                 team_ts[key].drop(index=row.index, inplace=True)
@@ -205,7 +215,6 @@ class DataPreprocessor:
                       'away_poss',
                       'home_coach',
                       'away_coach',
-                      'season',
                       'sts_home',
                       'sts_draw',
                       'sts_away',
