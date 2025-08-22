@@ -18,7 +18,7 @@ class DataPreprocessor:
     
     def preprocess_data(self):
         self._clean_data()
-        self._fill_lack_of_data(max_iter=1)
+        self._fill_lack_of_data()
         self._change_formation_to_numeric_data()
         if not self.get_time_series_data:
             self._extract_all_features_per_3_match_groups()
