@@ -18,7 +18,7 @@ class DataPreprocessor:
     
     def preprocess_data(self):
         self._clean_data()
-        self._fill_lack_of_data()
+        self._fill_lack_of_data(max_iter=1)
         self._change_formation_to_numeric_data()
         if not self.get_time_series_data:
             self._extract_all_features_per_3_match_groups()
@@ -90,7 +90,7 @@ class DataPreprocessor:
     def _extract_static_data(self, ts):
         row = ts.loc[ts['match_date'].idxmax(), :]
         ts.drop(index=row.name, inplace=True)
-        ts.drop(['result', 'season'], axis=1, inplace=True)
+        ts.drop(['season', 'result'], axis=1, inplace=True)
 
         static = {'home_points' : row['home_points'],
                   'home_position' : row['home_position'],
@@ -193,8 +193,8 @@ class DataPreprocessor:
         for key, val in team_ts.items():
             if key not in season_ts.keys():
                 ret = self._extract_static_data(val)
-                if ret is not None:  
-                    team_ts[key] = self._extract_static_data(val)
+                if ret is not None:
+                    team_ts[key] = ret
                     season_ts[key] = [*team_ts[key]]
             else:
                 row = team_ts[key].loc[team_ts[key]['match_date'] == key[0]]
