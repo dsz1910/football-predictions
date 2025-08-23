@@ -207,9 +207,10 @@ class DataPreprocessor:
 
     def _get_time_series_for_team(self, team, team_time_series):
         self._get_result_from_team_perspective(team, team_time_series)
-        self._coach_matches(team_time_series, team, None, get_multiple_results=True)
+        self._coach_matches(team_time_series, team, None, time_series_preprocessing=True)
         
-        team_time_series.drop(['result_from_home_perspective',
+        team_time_series.drop([
+                      'result_from_home_perspective',
                       'league',
                       'result_from_away_perspective',
                       'away_poss',
@@ -230,6 +231,43 @@ class DataPreprocessor:
         
         team_time_series = self._create_rolling_datasets_for_team(team_time_series)
         return team_time_series
+    
+    def _get_rivals_coach_matches(self, rival, season, coach_name, match_date):
+        return self.data.loc[
+            (self.data['season'] == season) &
+            (self.data['match_date'] < match_date) &
+            (((self.data['home_name'] == rival) & (self.data['home_coach'] == coach_name)) |
+             ((self.data['away_name'] == rival) & self.data['away_coach'] == coach_name))
+        ].sum()
+    
+    
+    def _coach_matches(self, games, team, coach, time_series_preprocessing=False):
+        if not time_series_preprocessing:
+            return games[
+                ((games['home_coach'] == coach) & (games['home_name'] == team)) |
+                ((games['away_coach'] == coach) & (games['away_name'] == team))
+                ].shape[0]
+        
+        games['coach'] = np.where(games['home_name'] == team,
+                                              games['home_coach'],
+                                              games['away_coach'])
+
+        games['rivals_name'] = np.where(games['home_name'] != team,
+                                        games['home_name'],
+                                        games['away_name'])
+        
+        games['rivals_coach'] = np.where(games['home_name'] == games['rivals_name'],
+                                         games['home_coach'],
+                                         games['away_coach'])
+        
+        games.sort_values(by='match_date', inplace=True)
+        games['coach_matches'] = games.groupby('coach').cumcount() + 1
+        games['rivals_coach_matches'] = games.apply(
+            lambda row: self._get_rivals_coach_matches(
+                row['rivals_name'], row['season'], row['rivals_coach'], row['match_date']), 
+            axis=1
+            )
+        games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
 
     def _extract_all_features_per_3_match_groups(self):
         final_stats = []
@@ -343,31 +381,6 @@ class DataPreprocessor:
             ].shape[0]
         return points / matches_count
 
-    @staticmethod
-    def _coach_matches(games, team, coach, get_multiple_results=False):
-        if not get_multiple_results:
-            return games[
-                ((games['home_coach'] == coach) & (games['home_name'] == team)) |
-                ((games['away_coach'] == coach) & (games['away_name'] == team))
-                ].shape[0]
-        
-        games['coach'] = np.where(games['home_name'] == team,
-                                              games['home_coach'],
-                                              games['away_coach'])
-
-        games['rivals_name'] = np.where(games['home_name'] != team,
-                                        games['home_name'],
-                                        games['away_name'])
-        
-        games['rivals_coach'] = np.where(games['home_name'] == games['rivals_name'],
-                                         games['home_coach'],
-                                         games['away_coach'])
-        
-        games.sort_values(by='match_date', inplace=True)
-        games['coach_matches'] = games.groupby('coach').cumcount() + 1
-        games['rivals_coach_matches'] = games.groupby('rivals_coach').cumcount() + 1
-        games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
-    
     @staticmethod
     def _mean_with_dispersion_penalty(game, home, away, col, stats_against=False):
         all_stats = []
