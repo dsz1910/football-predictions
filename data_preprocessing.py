@@ -20,12 +20,6 @@ class DataPreprocessor:
         self._clean_data()
         self._fill_lack_of_data()
         self._change_formation_to_numeric_data()
-        if not self.get_time_series_data:
-            self._extract_all_features_per_3_match_groups()
-            self._fill_lack_of_data(all_cols=True, n_nearest_features=100)
-        else:
-            self._get_all_time_series()
-        self._save_data()
 
     def _fill_lack_of_data(self, all_cols=False, n_estimators=300, max_depth=5, max_iter=30, 
                            n_nearest_features=40, min_samples_leaf=50, min_samples_split=100):
@@ -72,6 +66,53 @@ class DataPreprocessor:
         self.data['away_formation'] = self.data['away_formation'].apply(
             lambda x: int(x.replace(' - ', '')) if pd.notna(x) else np.nan).astype('Int64')
         
+    def _coach_matches(self, games, team, coach, time_series_preprocessing=False):
+        if not time_series_preprocessing:
+            return games[
+                ((games['home_coach'] == coach) & (games['home_name'] == team)) |
+                ((games['away_coach'] == coach) & (games['away_name'] == team))
+                ].shape[0]
+        
+        games['coach'] = np.where(games['home_name'] == team,
+                                              games['home_coach'],
+                                              games['away_coach'])
+
+        games['rivals_name'] = np.where(games['home_name'] != team,
+                                        games['home_name'],
+                                        games['away_name'])
+        
+        games['rivals_coach'] = np.where(games['home_name'] == games['rivals_name'],
+                                         games['home_coach'],
+                                         games['away_coach'])
+        
+        games.sort_values(by='match_date', inplace=True)
+        games['coach_matches'] = games.groupby('coach').cumcount() + 1
+        games['rivals_coach_matches'] = games.apply(
+            lambda row: self._get_rivals_coach_matches(
+                row['rivals_name'], row['season'], row['rivals_coach'], row['match_date']), 
+            axis=1
+            )
+        games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
+
+    def _save_data(self):
+        if self.get_time_series_data:
+            with open('time_series_dataset.pkl', 'wb') as file:
+                pickle.dump(self.data, file)
+        else:
+            self.data.to_csv('stats_dataset.csv', index=False, encoding='utf-8')
+            self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
+
+
+class GetTimeSeries(DataPreprocessor):
+
+    def __init__(self):
+        super().__init__(True)
+
+    def preprocess_data(self):
+        super().preprocess_data()
+        self._get_all_time_series()
+        self._save_data()
+
     def _set_result_from_team_perspectives(self):
         self.data['result_from_home_perspective'] = self.data['result'].replace(2, -1, inplace=False)
         self.data['result_from_away_perspective'] = - self.data['result_from_home_perspective']
@@ -157,11 +198,12 @@ class DataPreprocessor:
         return games[games['home_name'] == team][f'home_{stats}'].sum() + \
             games[games['away_name'] == team][f'away_{stats}'].sum()
 
-    def _create_rolling_datasets_for_team(self, df):
+    def _create_rolling_datasets_for_team(self, df, season):
         time_series_collection = list(df.rolling(window=55))
         time_series_collection = {
             (ts.loc[ts['match_date'].idxmax(), 'match_date'],
-             ts.loc[ts['match_date'].idxmax(), 'home_name']
+             ts.loc[ts['match_date'].idxmax(), 'home_name'],
+             season
              ) : ts
               for ts in time_series_collection if ts.shape[0] > 3
               }
@@ -184,7 +226,7 @@ class DataPreprocessor:
 
         for team in teams:
             matches = season_matches.query('home_name == @team or away_name == @team').copy()
-            team_time_series = self._get_time_series_for_team(team, matches)
+            team_time_series = self._get_time_series_for_team(team, matches, season)
             self._add_to_season_time_series(season_time_series, team_time_series)
 
         return season_time_series
@@ -205,7 +247,7 @@ class DataPreprocessor:
                 else:
                     season_ts[key].append(team_ts[key])
 
-    def _get_time_series_for_team(self, team, team_time_series):
+    def _get_time_series_for_team(self, team, team_time_series, season):
         self._get_result_from_team_perspective(team, team_time_series)
         self._coach_matches(team_time_series, team, None, time_series_preprocessing=True)
         
@@ -229,7 +271,7 @@ class DataPreprocessor:
                       axis=1,
                       inplace=True)
         
-        team_time_series = self._create_rolling_datasets_for_team(team_time_series)
+        team_time_series = self._create_rolling_datasets_for_team(team_time_series, season)
         return team_time_series
     
     def _get_rivals_coach_matches(self, rival, season, coach_name, match_date):
@@ -238,36 +280,19 @@ class DataPreprocessor:
             (self.data['match_date'] < match_date) &
             (((self.data['home_name'] == rival) & (self.data['home_coach'] == coach_name)) |
              ((self.data['away_name'] == rival) & self.data['away_coach'] == coach_name))
-        ].sum()
+        ].shape[0]
     
-    
-    def _coach_matches(self, games, team, coach, time_series_preprocessing=False):
-        if not time_series_preprocessing:
-            return games[
-                ((games['home_coach'] == coach) & (games['home_name'] == team)) |
-                ((games['away_coach'] == coach) & (games['away_name'] == team))
-                ].shape[0]
-        
-        games['coach'] = np.where(games['home_name'] == team,
-                                              games['home_coach'],
-                                              games['away_coach'])
 
-        games['rivals_name'] = np.where(games['home_name'] != team,
-                                        games['home_name'],
-                                        games['away_name'])
-        
-        games['rivals_coach'] = np.where(games['home_name'] == games['rivals_name'],
-                                         games['home_coach'],
-                                         games['away_coach'])
-        
-        games.sort_values(by='match_date', inplace=True)
-        games['coach_matches'] = games.groupby('coach').cumcount() + 1
-        games['rivals_coach_matches'] = games.apply(
-            lambda row: self._get_rivals_coach_matches(
-                row['rivals_name'], row['season'], row['rivals_coach'], row['match_date']), 
-            axis=1
-            )
-        games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
+class GetGroupedStats(DataPreprocessor):
+
+    def __init__(self):
+        super().__init__(False)
+
+    def preprocess_data(self):
+        super().preprocess_data()
+        self._extract_all_features_per_3_match_groups()
+        self._fill_lack_of_data(all_cols=True, n_nearest_features=100)
+        self._save_data()
 
     def _extract_all_features_per_3_match_groups(self):
         final_stats = []
@@ -418,18 +443,18 @@ class DataPreprocessor:
             return matches
         return matches.head(9).reset_index(drop=True)
     
-    def _save_data(self):
-        if self.get_time_series_data:
-            with open('time_series_dataset.pkl', 'wb') as file:
-                pickle.dump(self.data, file)
-        else:
-            self.data.to_csv('stats_dataset.csv', index=False, encoding='utf-8')
-            self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
-
 
 if __name__ == '__main__':
-    dp = DataPreprocessor(True)
+    # get time series
+    ts_preprocessor = GetTimeSeries()
     start = perf_counter()
-    dp.preprocess_data()
+    ts_preprocessor.preprocess_data()
     end = perf_counter()
     print(f'Data preprocessing time: {end - start}')
+
+    # group stats
+    '''gs_preprocessor = GetGroupedStats()
+    start = perf_counter()
+    gs_preprocessor.preprocess_data()
+    end = perf_counter()
+    print(f'Data preprocessing time: {end - start}')'''
