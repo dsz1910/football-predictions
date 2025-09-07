@@ -205,7 +205,7 @@ class GetTimeSeries(DataPreprocessor):
              ts.loc[ts['match_date'].idxmax(), 'home_name'],
              season
              ) : ts
-              for ts in time_series_collection if ts.shape[0] > 3
+              for ts in time_series_collection
               }
         return time_series_collection
 
@@ -217,7 +217,18 @@ class GetTimeSeries(DataPreprocessor):
             season_time_series = self._get_time_series_for_season(season)
             all_time_series.update(season_time_series)
 
+        self._delete_time_series_with_modest_data(all_time_series)
         self.data = all_time_series
+
+    def _delete_time_series_with_modest_data(self, data):
+        to_remove = []
+
+        for key, val in data.items():
+            if len(val[1]) < 3 > len(val[2]):
+                to_remove.append(key)
+        
+        for key in to_remove:
+            del data[key]
 
     def _get_time_series_for_season(self, season):
         season_time_series = {}
