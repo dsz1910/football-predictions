@@ -61,10 +61,10 @@ class DataPreprocessor:
                     lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
 
         self.data['home_formation'] = self.data['home_formation'].apply(
-            lambda x: int(x.replace(' - ', '')) if pd.notna(x) else np.nan).astype('Int64')
+            lambda x: int(x.replace(' - ', '')) if pd.notna(x) else 0).astype('int64')
         
         self.data['away_formation'] = self.data['away_formation'].apply(
-            lambda x: int(x.replace(' - ', '')) if pd.notna(x) else np.nan).astype('Int64')
+            lambda x: int(x.replace(' - ', '')) if pd.notna(x) else 0).astype('int64')
         
     def _coach_matches(self, games, team, coach, time_series_preprocessing=False):
         if not time_series_preprocessing:
