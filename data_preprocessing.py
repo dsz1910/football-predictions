@@ -252,6 +252,7 @@ class GetTimeSeries(DataPreprocessor):
             else:
                 row = team_ts[key].loc[team_ts[key]['match_date'] == key[0]]
                 team_ts[key].drop(index=row.index, inplace=True)
+                team_ts[key].drop(['result', 'season'], axis=1, inplace=True)
 
                 if key[1] == row['home_name'].iloc[0]:
                     season_ts[key].insert(1, team_ts[key])
