@@ -6,7 +6,6 @@ class MatchPredictor(nn.Module):
 
     def __init__(self, series_input_size, series_hidden_size, series_num_layers, static_data_size, device):
         super().__init__()
-
         self.lstm_params = {
             'input_size' : series_input_size,
             'num_layers' : series_num_layers,
