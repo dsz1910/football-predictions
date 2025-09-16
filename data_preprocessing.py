@@ -131,7 +131,7 @@ class GetTimeSeries(DataPreprocessor):
     def _extract_static_data(self, ts):
         row = ts.loc[ts['match_date'].idxmax(), :]
         ts.drop(index=row.name, inplace=True)
-        ts.drop(['season', 'result'], axis=1, inplace=True)
+        ts.drop('result', axis=1, inplace=True)
 
         static = {'home_points' : row['home_points'],
                   'home_position' : row['home_position'],
@@ -252,7 +252,7 @@ class GetTimeSeries(DataPreprocessor):
             else:
                 row = team_ts[key].loc[team_ts[key]['match_date'] == key[0]]
                 team_ts[key].drop(index=row.index, inplace=True)
-                team_ts[key].drop(['result', 'season'], axis=1, inplace=True)
+                team_ts[key].drop('result', axis=1, inplace=True)
 
                 if key[1] == row['home_name'].iloc[0]:
                     season_ts[key].insert(1, team_ts[key])
