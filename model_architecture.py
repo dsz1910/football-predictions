@@ -11,7 +11,7 @@ class MatchPredictor(nn.Module):
             'num_layers' : series_num_layers,
             'batch_first' : True,
             'bidirectional' : False,
-            'dropout' : 0.2,
+            'dropout' : 0.5,
             }
         
         self.device = device
@@ -22,13 +22,16 @@ class MatchPredictor(nn.Module):
         self.home_lstm = nn.LSTM(**self.lstm_params)
         self.away_lstm = nn.LSTM(**self.lstm_params)
         self.fc = nn.Sequential(
-            nn.Linear(self.combined_size, 128),
+            nn.Linear(self.combined_size, 32),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(128, 64),
+            nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(64, 3)
+            nn.Dropout(0.5),
+            nn.Linear(16, 3)
             )
+        
+        #self.fc = nn.Linear(self.combined_size, 3)
         
     def forward(self, static, packed_home, packed_away):
         _, (h_home, _) = self.home_lstm(packed_home)
