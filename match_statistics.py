@@ -45,13 +45,31 @@ class ScrapeStatistics(PageInteractor):
     
     def _get_match_stats_available_for_old_games(self, driver, url, season_idx):
         self.get_website(driver, url)
+        final_data = {}
         
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
             self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
 
         all_stats = self._scrape_stats(driver)
-        for row in all_stats:
-            print(row)
+        final_data = self._get_match_information(final_data, season_idx, driver)
+
+        final_data['home_passes'], final_data['home_acc_passes'], \
+        final_data['away_passes'], final_data['away_acc_passes'] = (
+            self._get_passes(all_stats) if 'Podania' in all_stats.keys()
+            else (np.nan, np.nan, np.nan, np.nan))
+
+
+        for stats, val in all_stats.items():
+            if stats == 'Posiadanie piłki':
+                final_data['home_poss'], final_data['away_poss'] = self._get_possesion(val)
+
+            elif stats == 'Podania':
+                continue
+
+            else:
+                final_data[f'home_{stats}'], final_data[f'away_{stats}'] = self._force_split(val)
+
+        return final_data
 
     def get_all_stats(self):
         for i, task in enumerate(self.matches):
@@ -62,7 +80,6 @@ class ScrapeStatistics(PageInteractor):
         scrape_func = (self._get_match_stats_available_for_old_games
                          if self.scrape_stats_available_for_old_matches
                          else self._get_match_stats)
-    
 
         self.workers = [Worker(self.task_queue, self.data, scrape_func, self.save_stats) 
                         for _ in range(self.threads_num)]
@@ -97,6 +114,19 @@ class ScrapeStatistics(PageInteractor):
                         for stats in all_stats}
         
         return match_stats
+    
+    def _get_match_information(self, data, season_idx, driver):
+        data['home_name'], data['away_name'] = self._get_team_names(driver)
+        data['season'] = season_idx
+        data['match_date'] = self._get_time(driver)
+        data['home_goals'], data['away_goals'] = self._get_goals(driver)
+        data['result'] = self._get_result(data['home_goals'], data['away_goals'])
+        data['league'], data['round'] = self._get_league_and_round(driver)
+        sts, fortuna, superbet = self._get_odds(driver)
+        data['sts_home'], data['sts_draw'], data['sts_away'] = sts 
+        data['fortuna_home'], data['fortuna_draw'], data['fortuna_away'] = fortuna 
+        data['superbet_home'], data['superbet_draw'], data['superbet_away'] = superbet
+        return data
         
     def _get_match_stats(self, driver, url, season_idx):
         self.get_website(driver, url)
@@ -139,16 +169,7 @@ class ScrapeStatistics(PageInteractor):
                     final_data[f'home_{value}'], final_data[f'away_{value}'] = self._split_home_and_away(
                     match_stats, key)
 
-        final_data['home_name'], final_data['away_name'] = self._get_team_names(driver)
-        final_data['season'] = season_idx
-        final_data['match_date'] = self._get_time(driver)
-        final_data['home_goals'], final_data['away_goals'] = self._get_goals(driver)
-        final_data['result'] = self._get_result(final_data['home_goals'], final_data['away_goals'])
-        final_data['league'], final_data['round'] = self._get_league_and_round(driver)
-        sts, fortuna, superbet = self._get_odds(driver)
-        final_data['sts_home'], final_data['sts_draw'], final_data['sts_away'] = sts 
-        final_data['fortuna_home'], final_data['fortuna_draw'], final_data['fortuna_away'] = fortuna 
-        final_data['superbet_home'], final_data['superbet_draw'], final_data['superbet_away'] = superbet
+        final_data = self._get_match_information(final_data, season_idx, driver)
 
         url = url.replace('statystyki-meczu/0', 'sklady') # 'match-statistics/0', 'line-ups'
         self.get_website(driver, url)
@@ -202,6 +223,7 @@ class ScrapeStatistics(PageInteractor):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'sectionsWrapper')
         all_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-category_Ydwqh')
         all_stats = [stats.text.split('\n') for stats in all_stats]
+        all_stats = {stats[1] : (stats[0], stats[2]) for stats in all_stats}
         return all_stats
 
     @errors_handler
@@ -274,6 +296,10 @@ class ScrapeStatistics(PageInteractor):
         return sts_odds, fortuna_odds, superbet_odds
 
     @staticmethod
+    def _force_split(val):
+        return float(val[0]), float(val[1])
+    
+    @staticmethod
     def _split_home_and_away(data, key):
         if key in data:
             return float(data[key][0]), float(data[key][1])
@@ -313,7 +339,7 @@ class ScrapeStatistics(PageInteractor):
 class Worker(threading.Thread):
 
     options = Options()
-    #options.add_argument('--headless=new')
+    options.add_argument('--headless=new')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -350,7 +376,7 @@ if __name__ == '__main__':
     #stats_scraper.get_all_stats()
     driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/jagiellonia-bialystok-lIDaZJTc/rakow-czestochowa-SQOrbYim/szczegoly/statystyki/?mid=MHB6iaIl',
+    'https://www.flashscore.pl/mecz/pilka-nozna/cracovia-KvXSf2A6/pogon-szczecin-Um9YwPQ0/szczegoly/statystyki/?mid=vRNNMnBE',
     1)
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
