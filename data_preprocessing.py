@@ -105,8 +105,9 @@ class DataPreprocessor:
 
 class GetTimeSeries(DataPreprocessor):
 
-    def __init__(self):
+    def __init__(self, min_matches_num_in_series):
         super().__init__(True)
+        self.min_matches_num_in_series = min_matches_num_in_series
 
     def preprocess_data(self):
         super().preprocess_data()
@@ -224,7 +225,7 @@ class GetTimeSeries(DataPreprocessor):
         to_remove = []
 
         for key, val in data.items():
-            if len(val[1]) < 3 > len(val[2]):
+            if len(val[1]) < self.min_matches_num_in_series > len(val[2]):
                 to_remove.append(key)
         
         for key in to_remove:
@@ -458,7 +459,7 @@ class GetGroupedStats(DataPreprocessor):
 
 if __name__ == '__main__':
     # get time series
-    ts_preprocessor = GetTimeSeries()
+    ts_preprocessor = GetTimeSeries(5)
     start = perf_counter()
     ts_preprocessor.preprocess_data()
     end = perf_counter()

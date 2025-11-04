@@ -18,12 +18,13 @@ class ScrapeStatistics(PageInteractor):
     
     lock = threading.Lock()
 
-    def __init__(self, threads_num):
+    def __init__(self, threads_num, scrape_stats_available_for_old_matches):
         self.matches = self._read_links()
         self.data = []
         self.threads_num = threads_num
         self.task_queue = Queue()
         self.workers = None
+        self.scrape_stats_available_for_old_matches = scrape_stats_available_for_old_matches
 
     @staticmethod
     def errors_handler(func):
@@ -41,14 +42,29 @@ class ScrapeStatistics(PageInteractor):
                     sleep(1)
             return None
         return wrapper
+    
+    def _get_match_stats_available_for_old_games(self, driver, url, season_idx):
+        self.get_website(driver, url)
+        
+        if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
+            self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
+
+        all_stats = self._scrape_stats(driver)
+        for row in all_stats:
+            print(row)
 
     def get_all_stats(self):
         for i, task in enumerate(self.matches):
-            if i % 3000 == 0:
+            if i % 10000 == 0:
                 self.task_queue.put((0, 0))
             self.task_queue.put(task)
 
-        self.workers = [Worker(self.task_queue, self.data, self._get_match_stats, self.save_stats) 
+        scrape_func = (self._get_match_stats_available_for_old_games
+                         if self.scrape_stats_available_for_old_matches
+                         else self._get_match_stats)
+    
+
+        self.workers = [Worker(self.task_queue, self.data, scrape_func, self.save_stats) 
                         for _ in range(self.threads_num)]
 
         for worker in self.workers:
@@ -85,10 +101,17 @@ class ScrapeStatistics(PageInteractor):
     def _get_match_stats(self, driver, url, season_idx):
         self.get_website(driver, url)
         final_data = {}
-        stats_categories = {'Posiadanie piłki': 'poss', 'Oczekiwane gole (xG)': 'xG', 'Strzały łącznie': 'shots',
-                        'Strzały na bramkę': 'acc_shots', 'Strzały niecelne': 'inacc_shots', 'Podania': 'passes',
-                        'Rzuty rożne': 'corners', 'Obrony bramkarza': 'goalkeeper_saves',
-                        'Rzuty wolne': 'free_kicks', 'Spalone': 'offsides', 'Faule' : 'fouls'}
+        stats_categories = {'Posiadanie piłki': 'poss',
+                            'Oczekiwane gole (xG)': 'xG',
+                            'Strzały łącznie': 'shots',
+                            'Strzały na bramkę': 'acc_shots',
+                            'Strzały niecelne': 'inacc_shots',
+                            'Podania': 'passes',
+                            'Rzuty rożne': 'corners',
+                            'Obrony bramkarza': 'goalkeeper_saves',
+                            'Rzuty wolne': 'free_kicks',
+                            'Spalone': 'offsides',
+                            'Faule' : 'fouls'}
                 
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
             self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
@@ -173,6 +196,17 @@ class ScrapeStatistics(PageInteractor):
         home_excluded_count = excluded.count(208)
         away_excluded_count = len(excluded) - home_excluded_count
         return int(home_excluded_count), int(away_excluded_count)
+    
+    @errors_handler
+    def _scrape_stats(self, driver):
+        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'sectionsWrapper')
+        all_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-category_Ydwqh')
+        all_stats = [stats.text.split('\n') for stats in all_stats]
+        return all_stats
+
+    @errors_handler
+    def _get_possesion(self, driver):
+        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wcl-mainRow_Xi7Hi')
 
     @errors_handler
     def _get_mean_raiting(self, driver):
@@ -279,7 +313,7 @@ class ScrapeStatistics(PageInteractor):
 class Worker(threading.Thread):
 
     options = Options()
-    options.add_argument('--headless=new')
+    #options.add_argument('--headless=new')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -312,8 +346,12 @@ class Worker(threading.Thread):
                 
 if __name__ == '__main__':
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(6)
-    stats_scraper.get_all_stats()
+    stats_scraper = ScrapeStatistics(1, False)
+    #stats_scraper.get_all_stats()
+    driver = webdriver.Chrome()
+    stats_scraper._get_match_stats_available_for_old_games(driver,
+    'https://www.flashscore.pl/mecz/pilka-nozna/jagiellonia-bialystok-lIDaZJTc/rakow-czestochowa-SQOrbYim/szczegoly/statystyki/?mid=MHB6iaIl',
+    1)
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)

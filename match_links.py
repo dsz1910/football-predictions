@@ -8,7 +8,8 @@ import pickle
 
 class GetLinks(PageInteractor):
 
-    def __init__(self, driver):
+    def __init__(self, driver, leagues_file):
+        self.leagues_file = leagues_file
         self.driver = driver
         self.links = []
         self.leagues_to_scrape = self._read_leagues_to_scrape()
@@ -27,9 +28,8 @@ class GetLinks(PageInteractor):
         self.quit_website(self.driver)
         self._save_links()
 
-    @staticmethod
-    def _read_leagues_to_scrape():
-        with open('leagues_to_scrape.txt', 'r') as file:  # file with links to leagues
+    def _read_leagues_to_scrape(self):
+        with open(self.leagues_file, 'r') as file:  # file with links to leagues
             leagues_lst = [line.strip() for line in file]
         return leagues_lst
 
@@ -49,23 +49,28 @@ class GetLinks(PageInteractor):
             self.wait_until_element_is_not_visible(self.driver, By.ID, 'onetrust-reject-all-handler')
 
         while True:
-
             if self.is_element_present(self.driver, By.CSS_SELECTOR,
-                    '.wclButtonLink.wcl-buttonLink_crZm3.wcl-primary_un6zG.wcl-underline_viepI'):
+                    '.wclButtonLink.wcl-buttonLink_jmSkY.wcl-primary_aIST5.wcl-underline_rL72U'):
+                    #'.wclButtonLink.wcl-buttonLink_crZm3.wcl-primary_un6zG.wcl-underline_viepI'
                 
                 # click show more matches
-                self.wait_and_click_button(self.driver, By.CSS_SELECTOR,
-                    '.wclButtonLink.wcl-buttonLink_crZm3.wcl-primary_un6zG.wcl-underline_viepI')
-                #self.wait_and_click_button(self.driver, By.CSS_SELECTOR, '.event__more.event__more--static')
-                sleep(2)
+                try:
+                    self.wait_and_click_button(self.driver, By.CSS_SELECTOR,
+                        '.wclButtonLink.wcl-buttonLink_jmSkY.wcl-primary_aIST5.wcl-underline_rL72U')
+                except:
+                    continue
+
+                sleep(1)
             else:
                 break
 
         # get matches links
         matches = self.find_elements(self.driver, By.CSS_SELECTOR, 'a.eventRowLink')
-        new_links = [(link.get_attribute('href') + '/statystyki-meczu/0', idx) 
-                     for link in matches]        # '/match-statistics/0'
-        self.links += new_links
+
+        for link in matches:
+            link = link.get_attribute('href')
+            put_index = link.index('?m')
+            self.links.append((link[ : put_index] + 'szczegoly/statystyki/0/' + link[put_index : ], idx))
 
 
 if __name__ == '__main__':
@@ -81,7 +86,8 @@ if __name__ == '__main__':
     options.add_argument('user-agent=ąćęó')
     driver = webdriver.Chrome(options=options)
 
-    links_getter = GetLinks(driver)
+    leagues_file = 'leagues_to_scrape_2_set.txt'
+    links_getter = GetLinks(driver, leagues_file)
     links_getter.get_all_links()
     end = perf_counter()
     print(end - start)
