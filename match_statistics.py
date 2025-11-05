@@ -25,6 +25,21 @@ class ScrapeStatistics(PageInteractor):
         self.task_queue = Queue()
         self.workers = None
         self.scrape_stats_available_for_old_matches = scrape_stats_available_for_old_matches
+        self.stats_categories = {'Posiadanie piłki': 'poss',
+                            'Oczekiwane gole (xG)': 'xG',
+                            'Strzały łącznie': 'shots',
+                            'Strzały na bramkę': 'acc_shots',
+                            'Strzały niecelne': 'inacc_shots',
+                            'Podania': 'passes',
+                            'Rzuty rożne': 'corners',
+                            'Obrony bramkarza': 'goalkeeper_saves',
+                            'Rzuty wolne': 'free_kicks',
+                            'Spalone': 'offsides',
+                            'Faule' : 'fouls',
+                            'Żółte kartki' : 'yellow_cards',
+                            'Strzały zablokowane' : 'blocked_shots',
+                            'Wrzuty z autu' : 'throw_ins',
+                            'Czerwone kartki' : 'red_cards'}
 
     @staticmethod
     def errors_handler(func):
@@ -60,6 +75,9 @@ class ScrapeStatistics(PageInteractor):
 
 
         for stats, val in all_stats.items():
+            if stats not in self.stats_categories.keys():
+                continue
+
             if stats == 'Posiadanie piłki':
                 final_data['home_poss'], final_data['away_poss'] = self._get_possesion(val)
 
@@ -67,7 +85,11 @@ class ScrapeStatistics(PageInteractor):
                 continue
 
             else:
-                final_data[f'home_{stats}'], final_data[f'away_{stats}'] = self._force_split(val)
+                final_data[f'home_{self.stats_categories[stats]}'], \
+                    final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
+                
+        for key, val in final_data.items():
+            print(f'{key}: {val}')
 
         return final_data
 
@@ -131,17 +153,6 @@ class ScrapeStatistics(PageInteractor):
     def _get_match_stats(self, driver, url, season_idx):
         self.get_website(driver, url)
         final_data = {}
-        stats_categories = {'Posiadanie piłki': 'poss',
-                            'Oczekiwane gole (xG)': 'xG',
-                            'Strzały łącznie': 'shots',
-                            'Strzały na bramkę': 'acc_shots',
-                            'Strzały niecelne': 'inacc_shots',
-                            'Podania': 'passes',
-                            'Rzuty rożne': 'corners',
-                            'Obrony bramkarza': 'goalkeeper_saves',
-                            'Rzuty wolne': 'free_kicks',
-                            'Spalone': 'offsides',
-                            'Faule' : 'fouls'}
                 
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
             self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
@@ -149,11 +160,11 @@ class ScrapeStatistics(PageInteractor):
         match_stats = self._scrape_main_stats(driver)
 
         if not match_stats:
-            for value in stats_categories.values():
+            for value in self.stats_categories.values():
                 final_data[f'home_{value}'] = final_data[f'away_{value}'] = np.nan
         
         else:
-            for key, value in stats_categories.items():
+            for key, value in self.stats_categories.items():
                 if key == 'Podania': # 'Passes'
                     final_data[f'home_{value}'], final_data[f'home_acc_{value}'], \
                         final_data[f'away_{value}'], final_data[f'away_acc_{value}'] = self._get_passes(match_stats)
@@ -221,10 +232,18 @@ class ScrapeStatistics(PageInteractor):
     @errors_handler
     def _scrape_stats(self, driver):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'sectionsWrapper')
-        all_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-category_Ydwqh')
-        all_stats = [stats.text.split('\n') for stats in all_stats]
-        all_stats = {stats[1] : (stats[0], stats[2]) for stats in all_stats}
-        return all_stats
+
+        scraped_stats = self.find_elements(driver, By.CLASS_NAME, 'wcl-category_Ydwqh')
+        scraped_stats = [stats.text.split('\n') for stats in scraped_stats]
+        extracted_stats = {}
+
+        for stats in scraped_stats:
+            if stats[2] != 'Podania':
+                extracted_stats[stats[1]] = (stats[0], stats[2])
+                continue
+            extracted_stats['Podania'] = (stats[1], stats[-1])
+
+        return extracted_stats
 
     @errors_handler
     def _get_possesion(self, driver):
@@ -270,14 +289,10 @@ class ScrapeStatistics(PageInteractor):
 
     @errors_handler
     def _get_league_and_round(self, driver):
-        league_and_round = self.find_elements(driver, By.CLASS_NAME, 'wcl-scores-overline-03_0pkdl')[-1].text
-
+        league_and_round = self.find_elements(driver, By.CLASS_NAME, 'wcl-breadcrumbItemLabel_2QT1M')[-1].text
         round_start = league_and_round.find('KOLEJKA') # 'ROUND'
         league_round = np.nan if round_start == -1 else int(league_and_round[round_start + 8 : ])
-
-        league_end = league_and_round.find('-') - 1
-        league_name = league_and_round[ : league_end]
-
+        league_name = league_and_round[ : round_start - 3]
         return league_name, league_round
 
     @errors_handler
@@ -339,7 +354,7 @@ class ScrapeStatistics(PageInteractor):
 class Worker(threading.Thread):
 
     options = Options()
-    options.add_argument('--headless=new')
+    #options.add_argument('--headless=new')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -376,7 +391,7 @@ if __name__ == '__main__':
     #stats_scraper.get_all_stats()
     driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/cracovia-KvXSf2A6/pogon-szczecin-Um9YwPQ0/szczegoly/statystyki/?mid=vRNNMnBE',
+    'https://www.flashscore.pl/mecz/pilka-nozna/lechia-gdansk-GGLmkiK8/radomiak-radom-zD5nYhAT/szczegoly/statystyki/0/?mid=EXgH7aFo',
     1)
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
