@@ -60,14 +60,17 @@ class ScrapeStatistics(PageInteractor):
     
     def _get_match_stats_available_for_old_games(self, driver, url, season_idx):
         self.get_website(driver, url)
-        final_data = {}
+
+        final_data = self._get_match_information({}, season_idx, driver)
+
+        if driver.current_url != url:
+            return final_data
         
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
             self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
 
         all_stats = self._scrape_stats(driver)
-        final_data = self._get_match_information(final_data, season_idx, driver)
-
+    
         final_data['home_passes'], final_data['home_acc_passes'], \
         final_data['away_passes'], final_data['away_acc_passes'] = (
             self._get_passes(all_stats) if 'Podania' in all_stats.keys()
@@ -87,9 +90,6 @@ class ScrapeStatistics(PageInteractor):
             else:
                 final_data[f'home_{self.stats_categories[stats]}'], \
                     final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
-                
-        for key, val in final_data.items():
-            print(f'{key}: {val}')
 
         return final_data
 
@@ -354,7 +354,7 @@ class ScrapeStatistics(PageInteractor):
 class Worker(threading.Thread):
 
     options = Options()
-    #options.add_argument('--headless=new')
+    options.add_argument('--headless=new')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -387,12 +387,12 @@ class Worker(threading.Thread):
                 
 if __name__ == '__main__':
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(1, False)
-    #stats_scraper.get_all_stats()
-    driver = webdriver.Chrome()
+    stats_scraper = ScrapeStatistics(7, True)
+    stats_scraper.get_all_stats()
+    '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/lechia-gdansk-GGLmkiK8/radomiak-radom-zD5nYhAT/szczegoly/statystyki/0/?mid=EXgH7aFo',
-    1)
+    'https://www.flashscore.pl/mecz/pilka-nozna/barcelona-SKbpVP5K/valencia-CQeaytrD/szczegoly/statystyki/0/?mid=UssyZhkO',
+    1)'''
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
