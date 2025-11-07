@@ -91,7 +91,6 @@ class ScrapeStatistics(PageInteractor):
                 final_data[f'home_{self.stats_categories[stats]}'], \
                     final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
 
-        print(final_data['result'])
         return final_data
 
     def get_all_stats(self):
@@ -393,11 +392,11 @@ class Worker(threading.Thread):
 if __name__ == '__main__':
     start = perf_counter()
     stats_scraper = ScrapeStatistics(7, True)
-    #stats_scraper.get_all_stats()
-    driver = webdriver.Chrome()
+    stats_scraper.get_all_stats()
+    '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
     'https://www.flashscore.pl/mecz/pilka-nozna/charleroi-WIPDJ0hb/st-liege-vsnvCI6G/szczegoly/statystyki/0/?mid=vuqLodvn',
-    1)
+    1)'''
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
