@@ -91,11 +91,12 @@ class ScrapeStatistics(PageInteractor):
                 final_data[f'home_{self.stats_categories[stats]}'], \
                     final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
 
+        print(final_data['result'])
         return final_data
 
     def get_all_stats(self):
         for i, task in enumerate(self.matches):
-            if i % 10000 == 0:
+            if i % 5000 == 0:
                 self.task_queue.put((0, 0))
             self.task_queue.put(task)
 
@@ -117,7 +118,6 @@ class ScrapeStatistics(PageInteractor):
 
         self.data = pd.DataFrame(self.data)
         self.save_stats()
-        self.save_stats('excel')
 
     @errors_handler
     def _scrape_main_stats(self, driver):
@@ -282,9 +282,14 @@ class ScrapeStatistics(PageInteractor):
     @errors_handler
     def _get_goals(self, driver):
         result = self.find_element(driver, By.CLASS_NAME, 'detailScore__wrapper').text
+
+        if result == '-':
+            return 0, 0
+        
         dash = result.find('-')
         home_goals = int(result[ : dash - 1])
         away_goals = int(result[dash + 2 : ])
+    
         return home_goals, away_goals
 
     @errors_handler
@@ -388,11 +393,11 @@ class Worker(threading.Thread):
 if __name__ == '__main__':
     start = perf_counter()
     stats_scraper = ScrapeStatistics(7, True)
-    stats_scraper.get_all_stats()
-    '''driver = webdriver.Chrome()
+    #stats_scraper.get_all_stats()
+    driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/barcelona-SKbpVP5K/valencia-CQeaytrD/szczegoly/statystyki/0/?mid=UssyZhkO',
-    1)'''
+    'https://www.flashscore.pl/mecz/pilka-nozna/charleroi-WIPDJ0hb/st-liege-vsnvCI6G/szczegoly/statystyki/0/?mid=vuqLodvn',
+    1)
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
