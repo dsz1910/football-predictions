@@ -63,7 +63,7 @@ class ScrapeStatistics(PageInteractor):
 
         final_data = self._get_match_information({}, season_idx, driver)
 
-        if driver.current_url != url:
+        if driver.current_url != url or not final_data:
             return final_data
         
         if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
@@ -137,10 +137,14 @@ class ScrapeStatistics(PageInteractor):
         return match_stats
     
     def _get_match_information(self, data, season_idx, driver):
+        data['home_goals'], data['away_goals'] = self._get_goals(driver)
+
+        if data['home_goals'] == np.nan:
+            return {}
+        
         data['home_name'], data['away_name'] = self._get_team_names(driver)
         data['season'] = season_idx
         data['match_date'] = self._get_time(driver)
-        data['home_goals'], data['away_goals'] = self._get_goals(driver)
         data['result'] = self._get_result(data['home_goals'], data['away_goals'])
         data['league'], data['round'] = self._get_league_and_round(driver)
         sts, fortuna, superbet = self._get_odds(driver)
@@ -283,7 +287,7 @@ class ScrapeStatistics(PageInteractor):
         result = self.find_element(driver, By.CLASS_NAME, 'detailScore__wrapper').text
 
         if result == '-':
-            return 0, 0
+            return np.nan, np.nan
         
         dash = result.find('-')
         home_goals = int(result[ : dash - 1])
