@@ -307,7 +307,7 @@ class ScrapeStatistics(PageInteractor):
     
     @errors_handler
     def _get_odds(self, driver):
-        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wclOddsContentOverall')
+        self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wclOddsContent')
         odds = self.find_elements(driver, By.CLASS_NAME, 'wclOddsContent')
         odds = [x.text.split() for x in odds]
         odds = [list(map(lambda x: float(x) if x != '-' else np.nan, bookmaker)) for bookmaker in odds]
@@ -392,11 +392,11 @@ class Worker(threading.Thread):
 if __name__ == '__main__':
     start = perf_counter()
     stats_scraper = ScrapeStatistics(7, True)
-    stats_scraper.get_all_stats()
-    '''driver = webdriver.Chrome()
+    #stats_scraper.get_all_stats()
+    driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
     'https://www.flashscore.pl/mecz/pilka-nozna/charleroi-WIPDJ0hb/st-liege-vsnvCI6G/szczegoly/statystyki/0/?mid=vuqLodvn',
-    1)'''
+    1)
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
