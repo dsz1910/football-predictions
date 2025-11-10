@@ -91,16 +91,13 @@ class ScrapeStatistics(PageInteractor):
                 final_data[f'home_{self.stats_categories[stats]}'], \
                     final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
 
-        url = url.replace('statystyki/0', 'sklady') # 'match-statistics/0', 'line-ups'
-        print(url)
+        url = url.replace('statystyki/0', 'sklady') # 'statistics/0', 'line-ups'
         self.get_website(driver, url)
-
-        final_data['home_mean_rating'], final_data['away_mean_rating'] = self._get_mean_rating(driver)
+        
         final_data['home_excluded_count'], final_data['away_excluded_count'] = self._get_excluded_players_count(driver)
-
-        for key, val in final_data.items():
-            print(f'{key}: {val}')
-
+        print(final_data['home_excluded_count'], final_data['away_excluded_count'])
+        final_data['home_mean_rating'], final_data['away_mean_rating'] = self._get_mean_rating(driver)
+        print(final_data['home_mean_rating'], final_data['away_mean_rating'])
         return final_data
 
     def get_all_stats(self):
@@ -195,7 +192,7 @@ class ScrapeStatistics(PageInteractor):
 
         final_data = self._get_match_information(final_data, season_idx, driver)
 
-        url = url.replace('statystyki/0', 'sklady') # 'match-statistics/0', 'line-ups'
+        url = url.replace('statystyki/0', 'sklady') # 'statistics/0', 'line-ups'
         self.get_website(driver, url)
 
         if match_stats:
@@ -264,14 +261,12 @@ class ScrapeStatistics(PageInteractor):
 
     @errors_handler
     def _get_mean_rating(self, driver):
-        if not self.is_element_present(driver, By.CLASS_NAME,
-            'wcl-badgeRating_lqrln.wcl-variant-rating-b_-qEhu.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--home'):
+        if not self.is_element_present(driver, By.CSS_SELECTOR, '[class*="lf__teamRatingWrapper"]'):
             return np.nan, np.nan
-
-        home_rating = self.find_elements(driver, By.CLASS_NAME,
-            'wcl-badgeRating_lqrln.wcl-variant-rating-b_-qEhu.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--home')[0].text
-        away_rating = self.find_elements(driver, By.CLASS_NAME,
-            'wcl-badgeRating_lqrln.wcl-variant-rating-d_xNkyH.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--away')[0].text
+        
+        home_rating = self.find_elements(driver, By.CSS_SELECTOR, '[class*="lf__teamRatingWrapper--home"]')[0].text
+        away_rating = self.find_elements(driver, By.CSS_SELECTOR, '[class*="lf__teamRatingWrapper--away"]')[0].text
+        
         return float(home_rating), float(away_rating)
         
     @errors_handler
@@ -409,11 +404,11 @@ class Worker(threading.Thread):
 if __name__ == '__main__':
     start = perf_counter()
     stats_scraper = ScrapeStatistics(7, True)
-    #stats_scraper.get_all_stats()
-    driver = webdriver.Chrome()
+    stats_scraper.get_all_stats()
+    '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/charleroi-WIPDJ0hb/st-liege-vsnvCI6G/szczegoly/statystyki/0/?mid=vuqLodvn',
-    1)
+    'https://www.flashscore.pl/mecz/pilka-nozna/nieciecza-YNkK4khO/wisla-krakow-rob20Q2Q/szczegoly/statystyki/0/?mid=n94IoQ8P',
+    1)'''
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
     print(stats_scraper.data)
