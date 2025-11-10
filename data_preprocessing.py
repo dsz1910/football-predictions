@@ -10,8 +10,8 @@ import pickle
 
 class DataPreprocessor:
 
-    def __init__(self, get_time_series_data):
-        self.get_time_series_data = get_time_series_data
+    def __init__(self, data_as_time_series):
+        self.data_as_time_series = data_as_time_series
         vt = VirtualTable()
         vt.simulate_all_seasons()
         self.data = vt.stats
@@ -31,12 +31,10 @@ class DataPreprocessor:
             random_state=42, verbose=2)
         
         non_imputed_columns = ['home_name', 'away_name', 'result', 'match_date']
+        
         if not all_cols:
             non_imputed_columns = ['away_coach', 'away_formation', 'away_name', 'home_coach', 
                             'home_formation', 'home_name', 'league', 'match_date', 'round', 'match_date']
-            
-        else:
-            self.data = self.data[self.data.isna().mean(axis=1) < 0.5]
 
         cols_to_impute = [col for col in self.data.columns if col not in non_imputed_columns]
         data_to_impute = self.data[cols_to_impute].copy()
@@ -53,12 +51,12 @@ class DataPreprocessor:
         self.data = self.data.loc[self.data.groupby('away_name').away_name.transform('count') > 3]
 
     def _change_formation_to_numeric_data(self):
-        if not self.get_time_series_data:
-                self.data['home_defenders_num'] = self.data['home_formation'].apply(
-                    lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
+        if not self.data_as_time_series:
+            self.data['home_defenders_num'] = self.data['home_formation'].apply(
+                lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
                 
-                self.data['away_defenders_num'] = self.data['away_formation'].apply(
-                    lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
+            self.data['away_defenders_num'] = self.data['away_formation'].apply(
+                lambda x: int(x[0]) if pd.notna(x) else np.nan).astype('Int64')
 
         self.data['home_formation'] = self.data['home_formation'].apply(
             lambda x: int(x.replace(' - ', '')) if pd.notna(x) else 0).astype('int64')
@@ -95,7 +93,7 @@ class DataPreprocessor:
         games.drop(['rivals_name', 'rivals_coach', 'coach'], axis=1, inplace=True)
 
     def _save_data(self):
-        if self.get_time_series_data:
+        if self.data_as_time_series:
             with open('time_series_dataset.pkl', 'wb') as file:
                 pickle.dump(self.data, file)
         else:
@@ -103,11 +101,12 @@ class DataPreprocessor:
             self.data.to_excel('stats_dataset.xlsx', index=False, engine='openpyxl')
 
 
-class GetTimeSeries(DataPreprocessor):
+class TimeSeriesPreprocessor(DataPreprocessor):
 
-    def __init__(self, min_matches_num_in_series):
+    def __init__(self, min_time_series_length, coach_data):
         super().__init__(True)
-        self.min_matches_num_in_series = min_matches_num_in_series
+        self.min_time_series_length = min_time_series_length
+        self.coach_data = coach_data
 
     def preprocess_data(self):
         super().preprocess_data()
@@ -116,18 +115,18 @@ class GetTimeSeries(DataPreprocessor):
 
     def _set_result_from_team_perspectives(self):
         self.data['result_from_home_perspective'] = self.data['result'].replace(2, -1, inplace=False)
-        self.data['result_from_away_perspective'] = - self.data['result_from_home_perspective']
+        self.data['result_from_away_perspective'] = -self.data['result_from_home_perspective']
 
-    def _get_result_from_team_perspective(self, team, df):
-        mask = df['home_name'] == team
+    def _get_result_from_team_perspective(self, team, team_time_series):
+        mask = team_time_series['home_name'] == team
 
-        df['result_from_team_perspective'] = np.where(
+        team_time_series['result_from_team_perspective'] = np.where(
             mask,
-            df['result_from_home_perspective'],
-            df['result_from_away_perspective']
+            team_time_series['result_from_home_perspective'],
+            team_time_series['result_from_away_perspective']
             )
         
-        df['at_home'] = mask.astype(int)
+        team_time_series['at_home'] = mask.astype(int)
 
     def _extract_static_data(self, ts):
         row = ts.loc[ts['match_date'].idxmax(), :]
@@ -140,7 +139,7 @@ class GetTimeSeries(DataPreprocessor):
                   'away_position' : row['away_position'],
                   'goals_scored_ratio' : None,
                   'goals_conceded_ratio' : None,
-                  'raiting_ratio' : None,
+                  'rating_ratio' : None,
                   'xG_ratio' : None,
                   'result' : row['result']
                   }
@@ -169,9 +168,9 @@ class GetTimeSeries(DataPreprocessor):
         static['xG_ratio'] = home_xg_sum / away_xg_sum if away_xg_sum else home_xg_sum
 
         home_raiting_mean = self._choosen_stats_mean(
-            row['home_name'], 'mean_raiting', home_previous_games)
+            row['home_name'], 'mean_rating', home_previous_games)
         away_raiting_mean = self._choosen_stats_mean(
-            row['away_name'], 'mean_raiting', away_previous_games)
+            row['away_name'], 'mean_rating', away_previous_games)
         static['raiting_ratio'] = home_raiting_mean / away_raiting_mean
             
         static = pd.DataFrame(static, index=[0])
@@ -225,7 +224,7 @@ class GetTimeSeries(DataPreprocessor):
         to_remove = []
 
         for key, val in data.items():
-            if len(val[1]) < self.min_matches_num_in_series > len(val[2]):
+            if len(val[1]) < self.min_time_series_length > len(val[2]):
                 to_remove.append(key)
         
         for key in to_remove:
@@ -262,7 +261,9 @@ class GetTimeSeries(DataPreprocessor):
 
     def _get_time_series_for_team(self, team, team_time_series, season):
         self._get_result_from_team_perspective(team, team_time_series)
-        self._coach_matches(team_time_series, team, None, time_series_preprocessing=True)
+
+        if self.coach_data:
+            self._coach_matches(team_time_series, team, None, time_series_preprocessing=True)
         
         team_time_series.drop([
                       'result_from_home_perspective',
@@ -295,6 +296,43 @@ class GetTimeSeries(DataPreprocessor):
              ((self.data['away_name'] == rival) & self.data['away_coach'] == coach_name))
         ].shape[0]
     
+class TimeSeriesPreprocessorForOldMatches(TimeSeriesPreprocessor):
+
+    def __init__(self, min_time_series_length):
+        super().__init__(min_time_series_length, False)
+
+
+    def _fill_lack_of_data(self, all_cols=False, n_estimators=300, max_depth=5, max_iter=30,
+                           n_nearest_features=40, min_samples_leaf=50, min_samples_split=100):
+        
+        self.data[['home_red_cards', 'away_red_cards', 'home_yellow_cards', 'away_yellow_cards']] = \
+            self.data[['home_red_cards', 'away_red_cards', 'home_yellow_cards', 'away_yellow_cards']].fillna(0)
+
+        super()._fill_lack_of_data(
+            all_cols, n_estimators, max_depth, max_iter, n_nearest_features, min_samples_leaf, min_samples_split)
+        
+    def preprocess_data(self):
+        self._clean_data()
+        self._fill_lack_of_data()
+        self._get_all_time_series()
+        self._save_data()
+
+    def _extract_static_data(self, ts):
+        row = ts.loc[ts['match_date'].idxmax(), :]
+        ts.drop(index=row.name, inplace=True)
+        ts.drop('result', axis=1, inplace=True)
+
+        static = {'home_points' : row['home_points'],
+                  'home_position' : row['home_position'],
+                  'away_points' : row['away_points'],
+                  'away_position' : row['away_position'],
+                  'result' : row['result']
+                  }
+
+        static = pd.DataFrame(static, index=[0])
+        ts_and_static = [static, ts]
+
+        return ts_and_static
 
 class GetGroupedStats(DataPreprocessor):
 
@@ -343,7 +381,7 @@ class GetGroupedStats(DataPreprocessor):
             'offsides',
             'fouls',
             'goals',
-            'mean_raiting',
+            'mean_rating',
             'excluded_count')
         
         for i in range(3, stop, 3):
@@ -459,7 +497,14 @@ class GetGroupedStats(DataPreprocessor):
 
 if __name__ == '__main__':
     # get time series
-    ts_preprocessor = GetTimeSeries(5)
+    '''ts_preprocessor = TimeSeriesPreprocessor(5)
+    start = perf_counter()
+    ts_preprocessor.preprocess_data()
+    end = perf_counter()
+    print(f'Data preprocessing time: {end - start}')'''
+
+    # get time series including old matches
+    ts_preprocessor = TimeSeriesPreprocessorForOldMatches(4)
     start = perf_counter()
     ts_preprocessor.preprocess_data()
     end = perf_counter()

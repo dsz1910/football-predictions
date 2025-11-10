@@ -91,6 +91,16 @@ class ScrapeStatistics(PageInteractor):
                 final_data[f'home_{self.stats_categories[stats]}'], \
                     final_data[f'away_{self.stats_categories[stats]}'] = self._force_split(val)
 
+        url = url.replace('statystyki/0', 'sklady') # 'match-statistics/0', 'line-ups'
+        print(url)
+        self.get_website(driver, url)
+
+        final_data['home_mean_rating'], final_data['away_mean_rating'] = self._get_mean_rating(driver)
+        final_data['home_excluded_count'], final_data['away_excluded_count'] = self._get_excluded_players_count(driver)
+
+        for key, val in final_data.items():
+            print(f'{key}: {val}')
+
         return final_data
 
     def get_all_stats(self):
@@ -185,12 +195,12 @@ class ScrapeStatistics(PageInteractor):
 
         final_data = self._get_match_information(final_data, season_idx, driver)
 
-        url = url.replace('statystyki-meczu/0', 'sklady') # 'match-statistics/0', 'line-ups'
+        url = url.replace('statystyki/0', 'sklady') # 'match-statistics/0', 'line-ups'
         self.get_website(driver, url)
 
         if match_stats:
             try:
-                funcs = [self._get_formation, self._get_mean_raiting, 
+                funcs = [self._get_formation, self._get_mean_rating, 
                          self._get_excluded_players_count, self._get_coach]
                 values = sum((func(driver) for func in funcs), ())
             except TypeError:
@@ -198,7 +208,7 @@ class ScrapeStatistics(PageInteractor):
         else:
             values = [np.nan] * 8
         
-        keys = ['home_formation', 'away_formation', 'home_mean_raiting', 'away_mean_raiting',
+        keys = ['home_formation', 'away_formation', 'home_mean_rating', 'away_mean_rating',
                     'home_excluded_count', 'away_excluded_count', 'home_coach', 'away_coach']
         final_data.update(dict(zip(keys, values)))
 
@@ -222,11 +232,11 @@ class ScrapeStatistics(PageInteractor):
     @errors_handler
     def _get_excluded_players_count(self, driver):
         if not self.is_element_present(
-            driver, By.CSS_SELECTOR, '.wcl-caption_xZPDJ.wcl-scores-caption-05_f2TCB.wcl-description_iZZUi'):
+            driver, By.CLASS_NAME, 'wcl-caption_pBHDx.wcl-scores-caption-05_xKEFy.wcl-description_SpoaC'):
             return 0, 0
         
         excluded = self.find_elements(
-            driver, By.CSS_SELECTOR, '.wcl-caption_xZPDJ.wcl-scores-caption-05_f2TCB.wcl-description_iZZUi')
+            driver, By.CLASS_NAME, 'wcl-caption_pBHDx.wcl-scores-caption-05_xKEFy.wcl-description_SpoaC')
         excluded = [player.location['x'] for player in excluded]
         home_excluded_count = excluded.count(208)
         away_excluded_count = len(excluded) - home_excluded_count
@@ -253,13 +263,16 @@ class ScrapeStatistics(PageInteractor):
         self.wait_until_element_is_visible(driver, By.CLASS_NAME, 'wcl-mainRow_Xi7Hi')
 
     @errors_handler
-    def _get_mean_raiting(self, driver):
-        if not self.is_element_present(driver, By.XPATH, "//*[contains(@class, 'wcl-badgeRating_1MU6s') and contains(@class, 'lf__teamRatingWrapper--away')]"):
+    def _get_mean_rating(self, driver):
+        if not self.is_element_present(driver, By.CLASS_NAME,
+            'wcl-badgeRating_lqrln.wcl-variant-rating-b_-qEhu.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--home'):
             return np.nan, np.nan
-            
-        away_raiting = self.find_elements(driver, By.XPATH, "//*[contains(@class, 'wcl-badgeRating_1MU6s') and contains(@class, 'lf__teamRatingWrapper--away')]")[0].text
-        home_raiting = self.find_elements(driver, By.XPATH, "//*[contains(@class, 'wcl-badgeRating_1MU6s') and contains(@class, 'lf__teamRatingWrapper--home')]")[0].text
-        return float(home_raiting), float(away_raiting)
+
+        home_rating = self.find_elements(driver, By.CLASS_NAME,
+            'wcl-badgeRating_lqrln.wcl-variant-rating-b_-qEhu.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--home')[0].text
+        away_rating = self.find_elements(driver, By.CLASS_NAME,
+            'wcl-badgeRating_lqrln.wcl-variant-rating-d_xNkyH.wcl-large_PdEZL.lf__teamRatingWrapper.lf__teamRatingWrapper--WCL.lf__teamRatingWrapper--away')[0].text
+        return float(home_rating), float(away_rating)
         
     @errors_handler
     def _get_formation(self, driver):
