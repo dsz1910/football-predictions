@@ -315,7 +315,7 @@ class TimeSeriesPreprocessorForOldMatches(TimeSeriesPreprocessor):
         
     def preprocess_data(self):
         self._clean_data()
-        #self._fill_lack_of_data(max_iter=1)
+        self._fill_lack_of_data()
         self._get_all_time_series()
         self._save_data()
 
