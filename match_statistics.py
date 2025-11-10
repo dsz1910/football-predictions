@@ -95,9 +95,7 @@ class ScrapeStatistics(PageInteractor):
         self.get_website(driver, url)
         
         final_data['home_excluded_count'], final_data['away_excluded_count'] = self._get_excluded_players_count(driver)
-        print(final_data['home_excluded_count'], final_data['away_excluded_count'])
         final_data['home_mean_rating'], final_data['away_mean_rating'] = self._get_mean_rating(driver)
-        print(final_data['home_mean_rating'], final_data['away_mean_rating'])
         return final_data
 
     def get_all_stats(self):

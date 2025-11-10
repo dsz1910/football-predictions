@@ -238,11 +238,11 @@ class TimeSeriesPreprocessor(DataPreprocessor):
         for team in teams:
             matches = season_matches.query('home_name == @team or away_name == @team').copy()
             team_time_series = self._get_time_series_for_team(team, matches, season)
-            self._add_to_season_time_series(season_time_series, team_time_series)
+            self._add_time_series_to_season(season_time_series, team_time_series)
 
         return season_time_series
     
-    def _add_to_season_time_series(self, season_ts, team_ts):
+    def _add_time_series_to_season(self, season_ts, team_ts):
         for key, val in team_ts.items():
             if key not in season_ts.keys():
                 ret = self._extract_static_data(val)
@@ -259,19 +259,18 @@ class TimeSeriesPreprocessor(DataPreprocessor):
                 else:
                     season_ts[key].append(team_ts[key])
 
-    def _get_time_series_for_team(self, team, team_time_series, season):
-        self._get_result_from_team_perspective(team, team_time_series)
+    def _get_time_series_for_team(self, team, matches, season):
+        matches.sort_values(by='match_date', inplace=True)
+        self._get_result_from_team_perspective(team, matches)
 
         if self.coach_data:
-            self._coach_matches(team_time_series, team, None, time_series_preprocessing=True)
-        
-        team_time_series.drop([
+            self._coach_matches(matches, team, None, time_series_preprocessing=True)
+
+        matches.drop([
                       'result_from_home_perspective',
                       'league',
                       'result_from_away_perspective',
                       'away_poss',
-                      'home_coach',
-                      'away_coach',
                       'sts_home',
                       'sts_draw',
                       'sts_away',
@@ -285,7 +284,10 @@ class TimeSeriesPreprocessor(DataPreprocessor):
                       axis=1,
                       inplace=True)
         
-        team_time_series = self._create_rolling_datasets_for_team(team_time_series, season)
+        if 'home_coach' in matches.columns:
+            matches.drop(columns=['home_coach', 'away_coach'])
+        
+        team_time_series = self._create_rolling_datasets_for_team(matches, season)
         return team_time_series
     
     def _get_rivals_coach_matches(self, rival, season, coach_name, match_date):
@@ -313,14 +315,23 @@ class TimeSeriesPreprocessorForOldMatches(TimeSeriesPreprocessor):
         
     def preprocess_data(self):
         self._clean_data()
-        self._fill_lack_of_data()
+        #self._fill_lack_of_data(max_iter=1)
         self._get_all_time_series()
         self._save_data()
 
     def _extract_static_data(self, ts):
         row = ts.loc[ts['match_date'].idxmax(), :]
+
         ts.drop(index=row.name, inplace=True)
         ts.drop('result', axis=1, inplace=True)
+
+        home_previous_games = self._get_previous_matches_from_data_frame(
+            row['home_name'], row['season'], row['match_date'])
+        away_previous_games = self._get_previous_matches_from_data_frame(
+            row['away_name'], row['season'], row['match_date'])
+        
+        if not home_previous_games.shape[0] or not away_previous_games.shape[0]:
+            return None
 
         static = {'home_points' : row['home_points'],
                   'home_position' : row['home_position'],
@@ -504,7 +515,7 @@ if __name__ == '__main__':
     print(f'Data preprocessing time: {end - start}')'''
 
     # get time series including old matches
-    ts_preprocessor = TimeSeriesPreprocessorForOldMatches(4)
+    ts_preprocessor = TimeSeriesPreprocessorForOldMatches(3)
     start = perf_counter()
     ts_preprocessor.preprocess_data()
     end = perf_counter()
