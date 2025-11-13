@@ -61,14 +61,14 @@ class ScrapeStatistics(PageInteractor):
     def _get_match_stats_available_for_old_games(self, driver, url, season_idx):
         self.get_website(driver, url)
 
+        if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
+            self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
+
         final_data = self._get_match_information({}, season_idx, driver)
 
         if driver.current_url != url or not final_data:
             return final_data
         
-        if self.is_element_present(driver, By.ID, 'onetrust-reject-all-handler'):
-            self.wait_and_click_button(driver, By.ID, 'onetrust-reject-all-handler')
-
         all_stats = self._scrape_stats(driver)
     
         final_data['home_passes'], final_data['home_acc_passes'], \
@@ -100,7 +100,7 @@ class ScrapeStatistics(PageInteractor):
 
     def get_all_stats(self):
         for i, task in enumerate(self.matches):
-            if i % 5000 == 0:
+            if i % 1000 == 0:
                 self.task_queue.put((0, 0))
             self.task_queue.put(task)
 
@@ -405,7 +405,7 @@ if __name__ == '__main__':
     stats_scraper.get_all_stats()
     '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
-    'https://www.flashscore.pl/mecz/pilka-nozna/nieciecza-YNkK4khO/wisla-krakow-rob20Q2Q/szczegoly/statystyki/0/?mid=n94IoQ8P',
+    'https://www.flashscore.pl/mecz/pilka-nozna/cracovia-KvXSf2A6/zaglebie-lubin-tlYOere0/szczegoly/statystyki/0/?mid=QRcnTnFr',
     1)'''
     end = perf_counter()
     print('Scraping statistics time: ', end - start)
