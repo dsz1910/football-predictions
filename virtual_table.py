@@ -5,7 +5,7 @@ import numpy as np
 class VirtualTable:
 
     def __init__(self):
-        self.stats = pd.read_csv('stats.csv')
+        self.stats = pd.read_csv('raw_stats.csv')
         self.stats['match_date'] = pd.to_datetime(self.stats['match_date'], format='%d.%m.%Y %H:%M')
 
     def _create_table(self, season):

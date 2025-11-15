@@ -10,6 +10,7 @@ import numpy as np
 import threading
 import pickle
 import inspect
+import os
 from functools import wraps
 from time import sleep
 
@@ -19,8 +20,8 @@ class ScrapeStatistics(PageInteractor):
     lock = threading.Lock()
 
     def __init__(self, threads_num, scrape_stats_available_for_old_matches):
-        self.matches = self._read_links()
-        self.data = []
+        self.matches_to_scrape, self.data, self.start_season = self._read_links_and_scraped_data()
+        print(self.start_season)
         self.threads_num = threads_num
         self.task_queue = Queue()
         self.workers = None
@@ -99,7 +100,7 @@ class ScrapeStatistics(PageInteractor):
         return final_data
 
     def get_all_stats(self):
-        for i, task in enumerate(self.matches):
+        for i, task in enumerate(self.matches_to_scrape):
             if i % 1000 == 0:
                 self.task_queue.put((0, 0))
             self.task_queue.put(task)
@@ -120,8 +121,7 @@ class ScrapeStatistics(PageInteractor):
         for worker in self.workers:
             self.quit_website(worker.driver)
 
-        self.data = pd.DataFrame(self.data)
-        self.save_stats()
+        self.save_stats(self.data)
 
     @errors_handler
     def _scrape_main_stats(self, driver):
@@ -351,19 +351,29 @@ class ScrapeStatistics(PageInteractor):
     def _get_possesion(poss):
         return float(poss[0][:-1]), float(poss[1][:-1])
 
-    def save_stats(self, format='csv', data=None):
-        if data is None:
-            data = self.data
+    def save_stats(self, data, format='csv'):
         data = pd.DataFrame(data)
 
-        file_formats = {'csv' : lambda: data.to_csv('stats.csv', index=False, encoding='utf-8'),
-                        'excel' : lambda: data.to_excel('stats.xlsx', index=False, engine='openpyxl')}
+        file_formats = {'csv' : lambda: data.to_csv('raw_stats.csv', index=False, encoding='utf-8'),
+                        'excel' : lambda: data.to_excel('raw_stats.xlsx', index=False, engine='openpyxl')}
+        
         file_formats.get(format)()
 
     @staticmethod
-    def _read_links():
+    def _read_links_and_scraped_data():
         with open('match_links_with_season_indexes.pkl', 'rb') as file:
-            return pickle.load(file)
+            matches_to_scrape = pickle.load(file)
+        
+        if os.path.exists('raw_stats.csv'):
+            data = pd.read_csv('raw_stats.csv')
+            start_season = data['season'].max()
+            data = data.loc[data['season'] < start_season]
+            data = data.to_dict(orient='records')
+            matches_to_scrape = list((filter(lambda x: x[1] >= start_season, matches_to_scrape)))
+
+            return matches_to_scrape, data, start_season
+        return matches_to_scrape, [], 1
+
 
 class Worker(threading.Thread):
 
@@ -378,30 +388,30 @@ class Worker(threading.Thread):
     
     def __init__(self, task_queue, results, task, saver):
         super().__init__()
-        self.driver = None
+        self.driver = webdriver.Chrome(options=Worker.options)
         self.task_queue = task_queue
         self.results = results
         self.task = task
         self.saver = saver
 
     def run(self):
-        self.driver = webdriver.Chrome(options=Worker.options)
-
         while not self.task_queue.empty():
             match, season_idx = self.task_queue.get()
-            if isinstance(match, str):
-                result = self.task(self.driver, match, season_idx)
-                if result:
-                    with ScrapeStatistics.lock:
+
+            with ScrapeStatistics.lock:
+                if isinstance(match, str):
+                    result = self.task(self.driver, match, season_idx)
+                    if result:
                         self.results.append(result)
-            else:
-                self.saver(data=self.results)
-                self.saver(format='excel')
-                print('saved data')
+                else:
+                    self.saver(self.results)
+                    #self.saver(format='excel')
+                    print('saved data')
                 
+
 if __name__ == '__main__':
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(7, True)
+    stats_scraper = ScrapeStatistics(6, True)
     stats_scraper.get_all_stats()
     '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,
