@@ -21,7 +21,6 @@ class ScrapeStatistics(PageInteractor):
 
     def __init__(self, threads_num, scrape_stats_available_for_old_matches):
         self.matches_to_scrape, self.data, self.start_season = self._read_links_and_scraped_data()
-        print(self.start_season)
         self.threads_num = threads_num
         self.task_queue = Queue()
         self.workers = None
@@ -114,6 +113,8 @@ class ScrapeStatistics(PageInteractor):
 
         for worker in self.workers:
             worker.start()
+
+        self.task_queue.join()
             
         for worker in self.workers:
             worker.join()
@@ -382,36 +383,55 @@ class Worker(threading.Thread):
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument('--log-level=3')
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
     options.add_experimental_option('useAutomationExtension', False)
     options.add_argument('user-agent=ąćęó')
     
     def __init__(self, task_queue, results, task, saver):
         super().__init__()
-        self.driver = webdriver.Chrome(options=Worker.options)
+        self.driver = self.driver = webdriver.Chrome(options=Worker.options)
         self.task_queue = task_queue
         self.results = results
         self.task = task
         self.saver = saver
 
     def run(self):
-        while not self.task_queue.empty():
-            match, season_idx = self.task_queue.get()
+        try:
+            while True:
+                try:
+                    match_url, season_idx = self.task_queue.get(timeout=3)
+                except Exception:
+                    break
 
-            with ScrapeStatistics.lock:
-                if isinstance(match, str):
-                    result = self.task(self.driver, match, season_idx)
-                    if result:
-                        self.results.append(result)
-                else:
-                    self.saver(self.results)
-                    #self.saver(format='excel')
-                    print('saved data')
+                try:
+                    if match_url == 0:
+                        with ScrapeStatistics.lock:
+                            self.saver(self.results)
+                            print('saved data')
+                    else:
+                        result = self.task(self.driver, match_url, season_idx)
+                        if result:
+                            with ScrapeStatistics.lock:
+                                self.results.append(result)
+                finally:
+                    try:
+                        self.task_queue.task_done()
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            print('Exception in run method: ', e)
+        finally:
+            self.driver.quit()
                 
 
 if __name__ == '__main__':
     start = perf_counter()
-    stats_scraper = ScrapeStatistics(6, True)
+    stats_scraper = ScrapeStatistics(7, True)
     stats_scraper.get_all_stats()
     '''driver = webdriver.Chrome()
     stats_scraper._get_match_stats_available_for_old_games(driver,

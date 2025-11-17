@@ -224,7 +224,7 @@ class TimeSeriesPreprocessor(DataPreprocessor):
         to_remove = []
 
         for key, val in data.items():
-            if len(val[1]) < self.min_time_series_length > len(val[2]):
+            if len(val[1]) < self.min_time_series_length or len(val[2]) < self.min_time_series_length:
                 to_remove.append(key)
         
         for key in to_remove:
