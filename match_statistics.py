@@ -367,7 +367,7 @@ class ScrapeStatistics(PageInteractor):
         
         if os.path.exists('raw_stats.csv'):
             data = pd.read_csv('raw_stats.csv')
-            start_season = data['season'].max()
+            start_season = data['season'].max() - 1
             data = data.loc[data['season'] < start_season]
             data = data.to_dict(orient='records')
             matches_to_scrape = list((filter(lambda x: x[1] >= start_season, matches_to_scrape)))

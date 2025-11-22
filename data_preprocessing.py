@@ -46,7 +46,17 @@ class DataPreprocessor:
     def _clean_data(self):
         self.data = self.data.loc[~self.data['home_name'].str.contains(
             '(', na=False, regex=False)]
-        self.data = self.data.loc[self.data['home_poss'].notnull()]
+        self.data = self.data.loc[self.data['home_shots'].notnull()]
+        self.data = self.data.loc[self.data['home_goals'].notnull()]
+        self.data.drop(columns=[
+            'superbet_home',
+            'superbet_away',
+            'superbet_draw',
+            'sts_home',
+            'sts_away',
+            'sts_draw',
+            'home_inacc_shots',
+            'away_inacc_shots'], inplace=True)
         self.data = self.data.loc[self.data.groupby('home_name').home_name.transform('count') > 3]
         self.data = self.data.loc[self.data.groupby('away_name').away_name.transform('count') > 3]
 
@@ -270,16 +280,7 @@ class TimeSeriesPreprocessor(DataPreprocessor):
                       'result_from_home_perspective',
                       'league',
                       'result_from_away_perspective',
-                      'away_poss',
-                      'sts_home',
-                      'sts_draw',
-                      'sts_away',
-                      'fortuna_home',
-                      'fortuna_draw',
-                      'fortuna_away',
-                      'superbet_home',
-                      'superbet_draw',
-                      'superbet_away'
+                      'away_poss'
                       ],
                       axis=1,
                       inplace=True)
