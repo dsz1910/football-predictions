@@ -22,15 +22,7 @@ class MatchPredictor(nn.Module):
         self.home_lstm = nn.LSTM(**self.lstm_params)
         self.away_lstm = nn.LSTM(**self.lstm_params)
         self.fc = nn.Sequential(
-            nn.Linear(self.combined_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(1024, 2048),
+            nn.Linear(self.combined_size, 2048),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(2048, 1024),
